@@ -15,7 +15,7 @@
 ![Air-Gapped](https://img.shields.io/badge/Air--Gapped-Supported-red)
 ![RHEL/CentOS](https://img.shields.io/badge/RHEL/CentOS-6+-yellow)
 
-> 🚀 **Salt Shaker** is a portable, air-gapped **Salt-SSH** wrapper for **RHEL/CentOS**.  
+> 🚀 **Salt Shaker** is a portable, **Salt-SSH** wrapper for **RHEL/CentOS**.  
 > - No Minions 🧙  
 > - No Internet 🌐❌  
 > - No Extra Packages 📦❌  
