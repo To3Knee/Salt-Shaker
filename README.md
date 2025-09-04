@@ -1,4 +1,4 @@
-![Salt Shaker Logo](https://github.com/To3Knee/Salt-Shaker/main/salt-shaker/assets/shlogo.jpg)
+![Salt Shaker Logo](https://github.com/To3Knee/Salt-Shaker/blob/main/salt-shaker/assets/shlogo.jpg)
 
 # 🧂 Salt Shaker — Portable Salt-SSH
 
