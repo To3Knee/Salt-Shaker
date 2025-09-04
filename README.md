@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/shlogo.png" alt="Salt-Shaker" width="250"/>
+  <img src="salt-shaker/assets/shlogo.png" alt="Salt-Shaker" width="250"/>
 </p>
 
 # 🧂 Salt Shaker — Portable Salt-SSH
