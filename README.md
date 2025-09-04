@@ -1,10 +1,11 @@
 
 
 <p align="center">
-  <img src="https://github.com/To3Knee/Salt-Shaker/main/salt-shaker/assets/shlogo.jpg" 
+  <img src="https://raw.githubusercontent.com/To3Knee/Salt-Shaker/main/salt-shaker/assets/shlogo.jpg" 
        alt="Salt Shaker" 
        width="150"/>
 </p>
+
 
 # 🧂 Salt Shaker — Portable Salt-SSH
 
