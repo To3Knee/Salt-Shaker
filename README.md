@@ -235,7 +235,7 @@ db1:
   - Clear “Edit Here” block in script with default tree diagram  
   - Logs auto-placed based on run dir  
   - Dry-run support (-t / SSKR_TEST=1)  
-  - Self-contained templates with dash-style names  
+  - Self-contained templates  
   - Packaging tools (tar, rpm)  
 
 ---
@@ -246,7 +246,7 @@ db1:
 **A:** No. Salt-SSH ships a thin payload over SSH.
 
 **Q:** Can I run anywhere?  
-**A:** Yes. Logs follow your run directory if in `/home` or `/srv/tmp`.
+**A:** Yes. Logs follow your run directory if in `/home` or `/opt` or `/tmp`.
 
 **Q:** Keys or passwords?  
 **A:** Passwords by default. Keys possible, but not the project scope.
