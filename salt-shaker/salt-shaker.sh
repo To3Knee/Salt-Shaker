@@ -2,7 +2,7 @@
 #===============================================================
 #Script Name: salt-shaker.sh
 #Date: 09/04/2025
-#Created By: Toknee
+#Created By: To3Knee
 #Version: 0.2.2
 #About: Portable Salt-SSH wrapper for the "Salt Shaker" project.
 #       - Air-gapped friendly (no package installs on targets)
@@ -170,7 +170,7 @@ cat <<'EOF'
 #===============================================================
 #Script Name: salt-shaker.sh
 #Date: 09/04/2025
-#Created By: Toknee
+#Created By: To3Knee
 #Version: 0.2.2
 #About: Portable Salt-SSH wrapper for the "Salt Shaker" project.
 #===============================================================
@@ -588,3 +588,4 @@ case "${sub:-}" in
   ""|help|-h|--help) print_help ;;
   *) die "Unknown subcommand: $sub (use -h)" ;;
 esac
+
