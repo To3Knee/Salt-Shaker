@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/shlogo.png" alt="Salt-Shaker" width="250"/>
+</p>
+
 # 🧂 Salt Shaker — Portable Salt-SSH
 
 [![Linux](https://img.shields.io/badge/platform-Linux-blue?logo=linux&logoColor=white)](#)
