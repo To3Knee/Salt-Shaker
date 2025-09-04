@@ -9,6 +9,8 @@
 
 # 🧂 Salt Shaker — Portable Salt-SSH
 
+## This is Just an idea and at this point 100% not functional (yet) - You have been warned
+
 [![Linux](https://img.shields.io/badge/platform-Linux-blue?logo=linux&logoColor=white)](#)
 [![Bash](https://img.shields.io/badge/shell-bash-green?logo=gnu-bash&logoColor=white)](#)
 [![Salt](https://img.shields.io/badge/SaltStack-portable-orange?logo=saltstack&logoColor=white)](#)
