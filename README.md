@@ -3,7 +3,7 @@
 <p align="center">
   <img src="https://raw.githubusercontent.com/To3Knee/Salt-Shaker/main/salt-shaker/assets/shlogo.jpg" 
        alt="Salt Shaker" 
-       width="150"/>
+       width="200"/>
 </p>
 
 
