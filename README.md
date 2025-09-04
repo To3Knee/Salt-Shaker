@@ -1,4 +1,4 @@
-# 🧂 Salt Shaker — Portable Salt-SSH (Air-Gapped Friendly)
+# 🧂 Salt Shaker — Portable Salt-SSH
 
 [![Linux](https://img.shields.io/badge/platform-Linux-blue?logo=linux&logoColor=white)](#)
 [![Bash](https://img.shields.io/badge/shell-bash-green?logo=gnu-bash&logoColor=white)](#)
