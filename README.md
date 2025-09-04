@@ -1,6 +1,4 @@
-<p align="center">
-  <img src="salt-shaker/assets/shlogo.png" alt="Salt-Shaker" width="250"/>
-</p>
+![Salt Shaker Logo](https://github.com/To3Knee/Salt-Shaker/main/assets/shlogo.jpg)
 
 # 🧂 Salt Shaker — Portable Salt-SSH
 
