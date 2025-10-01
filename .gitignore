@@ -42,3 +42,11 @@ pytest_cache/
 *.bak
 *~
 
+# noise/sensitive
+logs/
+tmp/
+archive/
+.cache/
+bin/*.bak
+github/.ssh/
+github/.ssh/*
