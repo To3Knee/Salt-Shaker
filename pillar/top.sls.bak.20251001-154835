@@ -1,0 +1,4 @@
+# pillar/top.sls - which pillar files to load
+base:
+  '*':
+    - data

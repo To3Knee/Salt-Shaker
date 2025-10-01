@@ -1,0 +1,6 @@
+minion-el8-01:
+  host: 192.168.1.48
+  user: tony
+  port: 22
+  sudo: True
+  tty: True

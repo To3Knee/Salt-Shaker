@@ -1,229 +1,350 @@
 #!/bin/bash
 #===============================================================
 #Script Name: 08-generate-configs.sh
-#Date: 09/27/2025
+#Date: 10/01/2025
 #Created By: T03KNEE
-#Github: https://github.com/To3Knee/Salt-Shaker
-#Version: 1.0
-#Short: Generate sample Salt configurations
-#About: Generates sample Salt configurations, including master config, roster template from CSV, state/pillar files. Prompts for target pod (network) and generates YAML roster file from the CSV created by module 02. Outputs: conf/master, roster/roster_build.ini, file-roots/top.sls/init.sls, pillar/top.sls/data.sls. Designed for air-gapped environments, uses only native bash and coreutils, ensuring compatibility across Red Hat 7.9, Rocky 8.x, and EL9 systems. Supports interactive pod selection, comprehensive logging, and error handling. No package installations required.
+#Version: 1.12
+#Short: Generate conf/master, pillar & file_roots (portable)
+#About: Creates/updates project-local Salt SSH config and scaffolds states.
+#       Always sets minion_id: shaker-controller and minion_id_caching: False.
+#       All paths (cache/logs/roster/file_roots/pillar_roots) remain inside
+#       the project. Optional sanity check and post-gen test.version.
 #===============================================================
 
-#===============================================================
-# Configuration Section - Edit variables here as needed
-#===============================================================
-PROJECT_ROOT="${PWD}"  # Project root (defaults to current)
-CSV_FILE="${PROJECT_ROOT}/roster/data/hosts_all_pods.csv"  # CSV from module 02
-ROSTER_DIR="${PROJECT_ROOT}/roster"
-ROSTER_FILE="${ROSTER_DIR}/hosts.yml"  # Generated YAML roster
-CONF_DIR="${PROJECT_ROOT}/conf"
-FILE_ROOTS_DIR="${PROJECT_ROOT}/file-roots"
-PILLAR_DIR="${PROJECT_ROOT}/pillar"
-LOG_DIR="${PROJECT_ROOT}/logs"
-MAIN_LOG="${LOG_DIR}/salt-shaker.log"
-ERROR_LOG="${LOG_DIR}/salt-shaker-errors.log"
-DIR_PERMS="700"  # Directories: user rwx, group/world none
-FILE_PERMS="600"  # Files: user rw, group/world none
-SCRIPT_PERMS="755"  # Scripts: user rwx, group/world rx
+umask 077
+set -euo pipefail
 
-# Color definitions for professional appearance (terminal-safe)
-if [ -t 1 ]; then
-    RED='\033[0;31m'
-    GREEN='\033[0;32m'
-    YELLOW='\033[1;33m'
-    BLUE='\033[0;34m'
-    PURPLE='\033[0;35m'
-    CYAN='\033[0;36m'
-    WHITE='\033[1;37m'
-    NC='\033[0m'
+# ================== CONFIG (edit me) ==================
+CONF_DIR_REL="conf"
+PILLAR_DIR_REL="pillar"
+FILE_ROOTS_REL="file-roots"
+ROSTER_FILE_REL="roster/roster.yaml"
+CACHE_DIR_REL=".cache"
+LOGS_DIR_REL="logs"
+
+DEFAULT_VENDOR="auto"           # auto|el7|el8|el9
+DEFAULT_FORCE="n"               # y|n
+DEFAULT_ENSURE_PILLAR="n"       # y|n
+DEFAULT_SANITY="n"              # y|n
+DEFAULT_POST_TEST="n"           # y|n
+DEFAULT_POST_MODE="roster"      # roster|adhoc
+DEFAULT_TARGET="*"              # for roster mode
+POST_FORCE_PASSWORD_DEFAULT="y" # y|n -> add --askpass + disable keys
+# =====================================================
+
+# -------- UI / Colors --------
+if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
+  C0="\033[0m"; B="\033[1m"; CY="\033[36m"; G="\033[32m"; Y="\033[33m"; R="\033[31m"
 else
-    RED="" GREEN="" YELLOW="" BLUE="" PURPLE="" CYAN="" WHITE="" NC=""
+  C0=""; B=""; CY=""; G=""; Y=""; R=""
 fi
+hr(){ printf '%b\n' "${CY}──────────────────────────────────────────────────────────────${C0}"; }
+title(){ hr; printf '%b\n' "${B}${G}SALT SHAKER${C0} ${CY}|${C0} ${B}Module 08 · Generate Configs${C0}"; hr; }
+kv(){ printf '%b\n' "  ${B}$1${C0}: $2"; }
+ok(){ printf '%b\n' "  ${G}✓${C0} $1"; }
+warn(){ printf '%b\n' "  ${Y}!${C0} $1"; }
+err(){ printf '%b\n' "  ${R}✖${C0} $1"; }
 
-#===============================================================
-# Functions
-#===============================================================
-
-# Function to log messages with color-coded console output
-log_info() {
-    local message="$1"
-    local color="$2"
-    [ -z "${color}" ] && color="${GREEN}"
-    
-    mkdir -p "${LOG_DIR}" 2>/dev/null || true
-    echo "$(date '+%Y-%m-%d %H:%M:%S') [INFO] ${message}" >> "${MAIN_LOG}" 2>/dev/null || true
-    echo -e "${color}${message}${NC}"
-}
-
-# Function to log errors
-log_error() {
-    local message="$1"
-    mkdir -p "${LOG_DIR}" 2>/dev/null || true
-    echo "$(date '+%Y-%m-%d %H:%M:%S') [ERROR] ${message}" >> "${ERROR_LOG}" 2>/dev/null || true
-    echo "$(date '+%Y-%m-%d %H:%M:%S') [ERROR] ${message}" >> "${MAIN_LOG}" 2>/dev/null || true
-    echo -e "${RED}[ERROR] ${message}${NC}" >&2
-}
-
-# Function to log warnings
-log_warn() {
-    local message="$1"
-    mkdir -p "${LOG_DIR}" 2>/dev/null || true
-    echo "$(date '+%Y-%m-%d %H:%M:%S') [WARN] ${message}" >> "${MAIN_LOG}" 2>/dev/null || true
-    echo -e "${YELLOW}[WARN] ${message}${NC}" >&2
-}
-
-# Function to pause and wait for user input
-pause() {
-    local message="${1:-Press Enter to continue...}"
-    echo -e "${CYAN}${message}${NC}"
-    read -r -e
-}
-
-# Function to get user input with validation
-get_user_input() {
-    local prompt="$1" default="$2" input
-    echo -e "${CYAN}${prompt} [default: ${default}]: ${NC}"
-    read -r -e input
-    input="${input:-${default}}"
-    echo "${input}"
-}
-
-# Function to validate CSV file
-validate_csv() {
-    local csv="$1"
-    if [ ! -r "${csv}" ]; then
-        log_error "CSV file not found or not readable: ${csv}"
-        return 1
+# -------- root detect (project-local only) --------
+RESOLVE_ABS(){ local p="$1"; if command -v readlink >/dev/null 2>&1 && readlink -f / >/dev/null 2>&1; then readlink -f -- "$p" 2>/dev/null || echo "$p"; else ( cd "$(dirname -- "$p")" >/dev/null 2>&1 && printf "%s/%s\n" "$(pwd -P)" "$(basename -- "$p")" ); fi; }
+DETECT_ROOT(){
+  local d; d="$(dirname -- "$(RESOLVE_ABS "$0")")"; local i=6
+  while [ "$i" -gt 0 ]; do
+    if [ -d "$d/vendor" ] || [ -d "$d/modules" ] || [ -f "$d/salt-shaker.sh" ] || [ -f "$d/salt-shaker-el7.sh" ]; then
+      echo "$d"; return 0
     fi
-    # Basic validation: check header
-    head -n1 "${csv}" | grep -q "pod,target,host,ip,port,user,passwd,sudo,ssh_args,description" || {
-        log_error "Invalid CSV header in ${csv}"
-        return 1
-    }
-    log_info "CSV validated: ${csv}"
-    return 0
+    d="$(dirname -- "$d")"; i=$((i-1))
+  done
+  pwd -P
+}
+ROOT="$(DETECT_ROOT)"
+
+# -------- paths (project-local) --------
+CONF_DIR="${ROOT}/${CONF_DIR_REL}"
+PILLAR_DIR="${ROOT}/${PILLAR_DIR_REL}"
+FILE_ROOTS="${ROOT}/${FILE_ROOTS_REL}"
+ROSTER_FILE="${ROOT}/${ROSTER_FILE_REL}"
+CACHE_DIR="${ROOT}/${CACHE_DIR_REL}"
+LOGS_DIR="${ROOT}/${LOGS_DIR_REL}"
+
+mkdir -p "${CONF_DIR}" "${PILLAR_DIR}" "${FILE_ROOTS}" "$(dirname -- "${ROSTER_FILE}")" "${CACHE_DIR}" "${LOGS_DIR}"
+chmod 700 "${CONF_DIR}" "${PILLAR_DIR}" "${FILE_ROOTS}" "$(dirname -- "${ROSTER_FILE}")" "${CACHE_DIR}" "${LOGS_DIR}" 2>/dev/null || true
+
+# -------- TTY prompts (FD 3) --------
+HAS_TTY=0
+if [ -r /dev/tty ] && [ -w /dev/tty ]; then exec 3<> /dev/tty; HAS_TTY=1; fi
+ask(){ local q="$1" def="$2" ans=""; if [ "$HAS_TTY" -eq 1 ]; then /bin/echo -en "${B}${q}${C0} [${def}]: " >&3; IFS= read -r ans <&3 || ans=""; fi; [ -z "$ans" ] && ans="$def"; printf '%s' "$ans"; }
+ask_yn(){ local q="$1" def="$2" a; a="$(ask "$q" "$def")"; case "$a" in y|Y) return 0;; *) return 1;; esac; }
+die(){ err "$1"; exit "${2:-2}"; }
+
+# -------- renderers --------
+render_master(){
+  cat > "${CONF_DIR}/master" <<EOF
+# Generated by Salt-Shaker (Module 08). Portable, project-local only.
+root_dir: ${ROOT}
+cachedir: ${CACHE_DIR}
+log_file: ${ROOT}/logs/salt-ssh.log
+log_level: info
+
+# Roster lives in project:
+roster: flat
+roster_file: ${ROSTER_FILE}
+
+# Always keep controller local (never touch /etc/salt/minion_id):
+minion_id: shaker-controller
+minion_id_caching: False
+
+file_roots:
+  base:
+    - ${FILE_ROOTS}
+
+pillar_roots:
+  base:
+    - ${PILLAR_DIR}
+EOF
 }
 
-# Function to generate master config
-generate_master_config() {
-    local conf_file="${CONF_DIR}/master"
-    mkdir -p "${CONF_DIR}" 2>/dev/null || true
-    {
-        echo "# Sample Salt master config for Salt Shaker"
-        echo "interface: 0.0.0.0"
-        echo "publish_port: 4505"
-        echo "ret_port: 4506"
-        echo "file_roots:"
-        echo "  base:"
-        echo "    - ${FILE_ROOTS_DIR}"
-        echo "pillar_roots:"
-        echo "  base:"
-        echo "    - ${PILLAR_DIR}"
-    } > "${conf_file}"
-    chmod "${FILE_PERMS}" "${conf_file}" 2>/dev/null || true
-    log_info "Generated master config: ${conf_file}"
-}
-
-# Function to generate state files
-generate_state_files() {
-    local top_sls="${FILE_ROOTS_DIR}/top.sls"
-    local init_sls="${FILE_ROOTS_DIR}/init.sls"
-    mkdir -p "${FILE_ROOTS_DIR}" 2>/dev/null || true
-    {
-        echo "base:"
-        echo "  '*':"
-        echo "    - init"
-    } > "${top_sls}"
-    {
-        echo "echo_test:"
-        echo "  cmd.run:"
-        echo "    - name: echo 'Hello from Salt Shaker'"
-    } > "${init_sls}"
-    chmod "${FILE_PERMS}" "${top_sls}" "${init_sls}" 2>/dev/null || true
-    log_info "Generated state files: ${top_sls}, ${init_sls}"
-}
-
-# Function to generate pillar files
-generate_pillar_files() {
-    local top_sls="${PILLAR_DIR}/top.sls"
-    local data_sls="${PILLAR_DIR}/data.sls"
-    mkdir -p "${PILLAR_DIR}" 2>/dev/null || true
-    {
-        echo "base:"
-        echo "  '*':"
-        echo "    - data"
-    } > "${top_sls}"
-    {
-        echo "message: 'Sample pillar data from Salt Shaker'"
-    } > "${data_sls}"
-    chmod "${FILE_PERMS}" "${top_sls}" "${data_sls}" 2>/dev/null || true
-    log_info "Generated pillar files: ${top_sls}, ${data_sls}"
-}
-
-# Function to generate roster from CSV
-generate_roster() {
-    local pod="$1"
-    mkdir -p "${ROSTER_DIR}" 2>/dev/null || true
-    {
-        awk -F, -v pod="${pod}" 'NR==1 {next} $1 == pod {print $2 ":\n  host: " $3 "\n  ip: " $4 "\n  port: " $5 "\n  user: " $6 "\n  passwd: " $7 "\n  sudo: " $8 "\n  ssh_args: " $9 "\n  description: " $10}' "${CSV_FILE}"
-    } > "${ROSTER_FILE}"
-    if [ -s "${ROSTER_FILE}" ]; then
-        chmod "${FILE_PERMS}" "${ROSTER_FILE}" 2>/dev/null || true
-        log_info "Generated roster file for pod ${pod}: ${ROSTER_FILE}"
-    else
-        log_error "No entries found for pod ${pod} in ${CSV_FILE}"
+ensure_master_keys(){
+  local m="${CONF_DIR}/master" updated=0
+  touch "$m"; chmod 600 "$m" 2>/dev/null || true
+  ensure_line(){
+    local key_re="$1" add_block="$2"
+    if ! grep -Eq "$key_re" "$m"; then
+      printf '\n# Ensured by Salt-Shaker (Module 08)\n%s\n' "$add_block" >> "$m"
+      updated=1
     fi
+  }
+  ensure_line '^root_dir:'        "root_dir: ${ROOT}"
+  ensure_line '^cachedir:'        "cachedir: ${CACHE_DIR}"
+  ensure_line '^log_file:'        "log_file: ${ROOT}/logs/salt-ssh.log"
+  ensure_line '^roster:[[:space:]]+flat' "roster: flat"
+  rf_esc="$(printf '%s\n' "${ROSTER_FILE}" | sed 's/[.[\*^$(){}+?\/|]/\\&/g')"
+  if ! grep -Eq "^roster_file:[[:space:]]+${rf_esc}\$" "$m"; then
+    printf '\n# Ensured by Salt-Shaker (Module 08)\n%s\n' "roster_file: ${ROSTER_FILE}" >> "$m"; updated=1
+  fi
+  ensure_line '^minion_id:[[:space:]]+shaker-controller' "minion_id: shaker-controller"
+  ensure_line '^minion_id_caching:[[:space:]]+False'     "minion_id_caching: False"
+  grep -Eq '^file_roots:' "$m" || { printf '\nfile_roots:\n  base:\n    - %s\n' "${FILE_ROOTS}" >> "$m"; updated=1; }
+  grep -Eq '^pillar_roots:' "$m" || { printf '\npillar_roots:\n  base:\n    - %s\n' "${PILLAR_DIR}" >> "$m"; updated=1; }
+  return $updated
 }
 
-#===============================================================
-# Error Trapping and Signal Handling
-#===============================================================
-trap 'log_error "Script interrupted at line ${LINENO}"; exit 1' INT TERM
+render_pillar_top(){ cat > "${PILLAR_DIR}/top.sls" <<'EOF'
+base:
+  '*':
+    - data
+EOF
+}
+render_file_roots_top(){ cat > "${FILE_ROOTS}/top.sls" <<'EOF'
+base:
+  '*':
+    - users
+EOF
+}
+render_users_state(){
+  mkdir -p "${FILE_ROOTS}/users"
+  cat > "${FILE_ROOTS}/users/init.sls" <<'EOF'
+{# Minimal example using pillar-driven password hashes #}
+users:
+  shaker_admin:
+    present: true
+    fullname: 'Shaker Admin'
+    shell: /bin/bash
+    password: {{ pillar.get('users', {}).get('shaker_admin', {}).get('password', '!!') }}
+EOF
+}
 
-#===============================================================
-# Main Script Logic
-#===============================================================
+# -------- CLI (non-interactive overrides) --------
+SHOW_HELP=0; SHOW_ABOUT=0
+FORCE="${DEFAULT_FORCE}"; ENSURE_PILLAR="${DEFAULT_ENSURE_PILLAR}"
+DO_SANITY="${DEFAULT_SANITY}"; VENDOR="${DEFAULT_VENDOR}"
+POST_TEST="${DEFAULT_POST_TEST}"; POST_MODE="${DEFAULT_POST_MODE}"; POST_TARGET="${DEFAULT_TARGET}"
+POST_FORCE_PW="${POST_FORCE_PASSWORD_DEFAULT}"
 
-# Parse command-line arguments
-while [[ $# -gt 0 ]]; do
-    case ${1} in
-        -h|--help)
-            show_help
-            exit 0
-            ;;
-        -a|--about)
-            show_about
-            exit 0
-            ;;
-        -*)
-            log_error "Unknown option: $1"
-            show_help >&2
-            exit 1
-            ;;
-    esac
-    shift
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -h|--help) SHOW_HELP=1 ;;
+    -a|--about) SHOW_ABOUT=1 ;;
+    --force) FORCE="y" ;;
+    --ensure-pillar) ENSURE_PILLAR="y" ;;
+    --sanity) DO_SANITY="y" ;;
+    --vendor) shift; VENDOR="${1:-auto}" ;;
+    --post-test) POST_TEST="y" ;;
+    --post-mode) shift; POST_MODE="${1:-roster}" ;;
+    --post-target) shift; POST_TARGET="${1:-*}" ;;
+    --post-password) POST_FORCE_PW="y" ;;
+    --post-no-password) POST_FORCE_PW="n" ;;
+    *) ;;
+  esac
+  shift || true
 done
 
-# Validate CSV
-if ! validate_csv "${CSV_FILE}"; then
-    exit 1
+# -------- Banner (print before prompts) --------
+title
+kv "Project Root" "${ROOT}"
+hr
+
+if [ $SHOW_HELP -eq 1 ]; then
+  echo "Usage: modules/08-generate-configs.sh [--force] [--ensure-pillar] [--sanity] [--vendor auto|el7|el8|el9]"
+  echo "                                     [--post-test] [--post-mode roster|adhoc] [--post-target <id>]"
+  echo "                                     [--post-password|--post-no-password]"
+  hr; exit 0
+fi
+if [ $SHOW_ABOUT -eq 1 ]; then
+  echo "Description: creation, local-only configs, optional sanity check and post-gen test.version."
+  hr; exit 0
 fi
 
-# Prompt for pod
-POD_NAME=$(get_user_input "Enter target pod (e.g., prod, dev, test)" "prod")
+# -------- Interactive prompts via /dev/tty --------
+if [ "$HAS_TTY" -eq 1 ]; then
+  FORCE="$(ask 'Do you want to force overwrite?' "${DEFAULT_FORCE}")"
+  ENSURE_PILLAR="$(ask 'Ensure pillar/data.sls?' "${DEFAULT_ENSURE_PILLAR}")"
+  DO_SANITY="$(ask 'Perform a sanity check?' "${DEFAULT_SANITY}")"
+  VENDOR="$(ask 'Select vendor (auto/el7/el8/el9)' "${DEFAULT_VENDOR}")"
+  POST_TEST="$(ask 'Run a quick test.version now?' "${DEFAULT_POST_TEST}")"
+  if [ "${POST_TEST}" = "y" ]; then
+    VENDOR="$(ask 'Select vendor (auto/el7/el8/el9)' "${VENDOR}")"
+    POST_MODE="$(ask 'Use ad-hoc host (-i user@host[:port])?' "${DEFAULT_POST_MODE}")"
+    if [ "${POST_MODE}" = "roster" ]; then
+      POST_TARGET="$(ask 'Target id or pattern' "${DEFAULT_TARGET}")"
+    fi
+    POST_FORCE_PW="$(ask 'Force password auth (--askpass, disable keys)?' "${POST_FORCE_PASSWORD_DEFAULT}")"
+  fi
+else
+  warn "No TTY detected; using defaults/non-interactive."
+fi
 
-# Generate files
-generate_master_config
-generate_state_files
-generate_pillar_files
-generate_roster "${POD_NAME}"
+# -------- Summary --------
+printf '%b\n' "${B}Generate Configs${C0}"
+kv "Project Root" "${ROOT}"
+kv "Force Overwrite" "$( [ "${FORCE}" = "y" ] && echo yes || echo no )"
+kv "Ensure pillar/data.sls" "$( [ "${ENSURE_PILLAR}" = "y" ] && echo yes || echo no )"
+kv "Sanity Check" "$( [ "${DO_SANITY}" = "y" ] && echo yes || echo no )"
+if [ "${POST_TEST}" = "y" ]; then
+  kv "Post-Gen Test" "yes"
+  kv "Post Mode" "${POST_MODE}"
+  kv "Post Force Password" "$( [ "${POST_FORCE_PW}" = "y" ] && echo yes || echo no )"
+else
+  kv "Post-Gen Test" "no"
+fi
+hr
 
-# Success message
-bar
-log_info "Configuration generation completed successfully for pod: ${POD_NAME}"
-log_info "Next steps:"
-log_info "   1. Review and edit generated files if needed."
-log_info "   2. Run salt-ssh using the generated roster: PYTHONPATH=${PROJECT_ROOT}/vendor/el7/salt/lib/python3.10/site-packages ${PROJECT_ROOT}/vendor/el7/salt/bin/salt-ssh '*' test.ping --thin-dir ${OUT_DIR} --roster-file ${ROSTER_FILE}"
-bar
-pause
+# -------- Write configs (project-local only) --------
+created=0; updated=0
+
+if [ "${FORCE}" = "y" ] || [ ! -s "${CONF_DIR}/master" ]; then
+  render_master
+  chmod 600 "${CONF_DIR}/master" 2>/dev/null || true
+  created=$((created+1))
+else
+  if ensure_master_keys; then updated=$((updated+1)); fi
+fi
+
+if [ "${FORCE}" = "y" ] || [ ! -s "${PILLAR_DIR}/top.sls" ]; then
+  render_pillar_top; chmod 600 "${PILLAR_DIR}/top.sls" 2>/dev/null || true; created=$((created+1))
+fi
+
+if [ "${FORCE}" = "y" ] || [ ! -s "${FILE_ROOTS}/top.sls" ]; then
+  render_file_roots_top; chmod 600 "${FILE_ROOTS}/top.sls" 2>/dev/null || true; created=$((created+1))
+fi
+
+if [ "${FORCE}" = "y" ] || [ ! -s "${FILE_ROOTS}/users/init.sls" ]; then
+  render_users_state; chmod 600 "${FILE_ROOTS}/users/init.sls" 2>/dev/null || true; created=$((created+1))
+fi
+
+if [ "${ENSURE_PILLAR}" = "y" ]; then
+  if [ ! -s "${PILLAR_DIR}/data.sls" ]; then
+    cat > "${PILLAR_DIR}/data.sls" <<'EOF'
+# Private pillar data (git-ignored). Example:
+users:
+  shaker_admin:
+    password: "<$6$....>"   # replace with tools/create-password-hash.sh output
+EOF
+    chmod 600 "${PILLAR_DIR}/data.sls" 2>/dev/null || true
+    created=$((created+1))
+  fi
+fi
+
+# -------- Sanity check (optional) --------
+pick_wrapper(){
+  case "$1" in
+    el7) [ -x "${ROOT}/bin/salt-ssh-el7" ] && echo "${ROOT}/bin/salt-ssh-el7" && return 0 ;;
+    el8) [ -x "${ROOT}/bin/salt-ssh-el8" ] && echo "${ROOT}/bin/salt-ssh-el8" && return 0 ;;
+    el9) [ -x "${ROOT}/bin/salt-ssh-el9" ] && echo "${ROOT}/bin/salt-ssh-el9" && return 0 ;;
+  esac
+  for p in el8 el9 el7; do [ -x "${ROOT}/bin/salt-ssh-${p}" ] && echo "${ROOT}/bin/salt-ssh-${p}" && return 0; done
+  return 1
+}
+
+if [ "${DO_SANITY}" = "y" ]; then
+  hr; printf '%b\n' "${B}Sanity Check${C0}"
+  WRAP="$(pick_wrapper "${VENDOR}")" || die "No wrapper found in ${ROOT}/bin/ (salt-ssh-el7|el8|el9)."
+  kv "Using" "${WRAP}"; kv "Config" "${CONF_DIR}"
+  if "${WRAP}" --versions-report >/dev/null 2>&1; then ok "salt-ssh --versions-report OK"; else die "salt-ssh --versions-report failed"; fi
+fi
+
+# -------- Post-gen test.version (optional; strictly project-local) --------
+POST_OK="skip"
+if [ "${POST_TEST}" = "y" ]; then
+  hr; printf '%b\n' "${B}Post-Gen Test (test.version)${C0}"
+  WRAP="$(pick_wrapper "${VENDOR}")" || die "No wrapper found."
+  kv "Using" "${WRAP}"; kv "Config" "${CONF_DIR}"
+
+  COMMON_ARGS=( --config-dir "${CONF_DIR}" -W -w )
+  POST_LOG="${LOGS_DIR}/postgen-$(date +%Y%m%d-%H%M%S).log"
+
+  # salt-ssh adds "-o" for each --ssh-option; pass only KEY=VALUE pairs.
+  ASKPASS_ARGS=()
+  if [ "${POST_FORCE_PW}" = "y" ]; then
+    ASKPASS_ARGS=(
+      --askpass
+      --ssh-option 'PreferredAuthentications=password'
+      --ssh-option 'PubkeyAuthentication=no'
+      --ssh-option 'KbdInteractiveAuthentication=no'
+      --ssh-option 'GSSAPIAuthentication=no'
+      --ssh-option 'StrictHostKeyChecking=no'
+      --ssh-option 'UserKnownHostsFile=/dev/null'
+    )
+  fi
+
+  if [ "${POST_MODE}" = "adhoc" ]; then
+    if [ "$HAS_TTY" -eq 1 ]; then
+      /bin/echo -en "  Ad-hoc target (-i user@host[:port]): " >&3
+      IFS= read -r ADHOC <&3 || ADHOC=""
+    else
+      ADHOC=""
+    fi
+    [ -z "${ADHOC}" ] && die "Ad-hoc target required in adhoc mode."
+    set +e
+    "${WRAP}" "${COMMON_ARGS[@]}" "${ASKPASS_ARGS[@]}" -i "${ADHOC}" test.version 2>&1 | tee "${POST_LOG}"
+    rc=$?; set -e
+  else
+    TGT="${POST_TARGET:-*}"
+    set +e
+    "${WRAP}" "${COMMON_ARGS[@]}" --roster-file "${ROSTER_FILE}" "${ASKPASS_ARGS[@]}" "${TGT}" test.version 2>&1 | tee "${POST_LOG}"
+    rc=$?; set -e
+  fi
+
+  if [ $rc -eq 0 ]; then
+    POST_OK="ok"
+  else
+    POST_OK="fail"
+    warn "Post-gen test.version failed. See: ${POST_LOG}"
+    tail -n 20 "${POST_LOG}" 2>/dev/null || true
+  fi
+fi
+
+# -------- Result --------
+hr; printf '%b\n' "${B}Result${C0}"
+kv "Created/Updated" "${created} file(s)"
+kv "Touched (ensure)" "${updated} file(s)"
+kv "conf/master" "${CONF_DIR}/master"
+kv "pillar/top.sls" "${PILLAR_DIR}/top.sls"
+kv "file-roots/top.sls" "${FILE_ROOTS}/top.sls"
+kv "users/init.sls" "${FILE_ROOTS}/users/init.sls"
+[ "${ENSURE_PILLAR}" = "y" ] && [ -s "${PILLAR_DIR}/data.sls" ] && kv "pillar/data.sls" "${PILLAR_DIR}/data.sls (ensured)"
+[ "${DO_SANITY}" = "y" ] && kv "Sanity" "ok"
+[ "${POST_TEST}" = "y" ] && kv "Post-Gen test.version" "${POST_OK}"
+hr; printf '%b\n' "${G}✓ Done${C0}"; hr
 exit 0
+

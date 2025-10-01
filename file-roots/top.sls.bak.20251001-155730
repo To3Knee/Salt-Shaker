@@ -1,0 +1,4 @@
+# file-roots/top.sls - which states to apply
+base:
+  '*':
+    - users

@@ -1,40 +1,131 @@
 #!/bin/bash
-# bin/salt-ssh-el8 (v1.2)
+# bin/salt-ssh-el8 (v1.4)
 #!/bin/bash
 #===============================================================
 #Script Name: salt-ssh-el8
-#Date: 09/28/2025
+#Date: 10/01/2025
 #Created By: T03KNEE
 #Github: https://github.com/To3Knee/Salt-Shaker
-#Version: 1.2
-#Short: Wrapper for salt-ssh using EL8/EL9 onedir (with --print-env)
+#Version: 1.4
+#Short: Wrapper for salt-ssh using EL8/EL9 onedir (cleanup, guarded)
+#About: Preserves existing behavior; adds -W -w (target cleanup), optional
+#       --roster-file, CONFIG block, --print-env, and retcode guard (off).
 #===============================================================
 set -euo pipefail
 
-RESOLVE_ABS(){ local p="$1"; if command -v readlink >/dev/null 2>&1 && readlink -f / >/dev/null 2>&1; then readlink -f -- "$p" 2>/dev/null || echo "$p"; else ( cd "$(dirname -- "$p")" >/dev/null 2>&1 && printf "%s/%s\n" "$(pwd)" "$(basename -- "$p")" ); fi; }
-SCRIPT_PATH="$(RESOLVE_ABS "$0")"; SCRIPT_DIR="$(dirname -- "$SCRIPT_PATH")"
-DETECT_ROOT(){ local d="$SCRIPT_DIR" i=6; while [ "$i" -gt 0 ]; do if [ -d "$d/vendor" ] || [ -d "$d/modules" ] || [ -f "$d/salt-shaker.sh" ] || [ -f "$d/salt-shaker-el7.sh" ]; then echo "$d"; return 0; fi; d="$(dirname -- "$d")"; i=$((i-1)); done; echo "$(pwd)"; }
+# === CONFIG (edit me) ========================================
+CONF_DIR_REL="conf"                  # project-relative config dir
+ROSTER_FILE_REL="roster/roster.yaml" # project-relative roster file
+
+ALWAYS_CLEANUP="y"                   # y=add -W -w every run
+PASS_ROSTER_FILE="y"                 # y=add --roster-file if present
+
+# Retcode guard (off by default)
+RET_GUARD_DEFAULT="0"                # 0=off, 1=on
+RET_OK_LIST_DEFAULT="0,2"            # treat as success when guard on
+# =============================================================
+
+# --- Environment overrides ----------------------------------
+# SALT_SHAKER_ROOT=/abs/path
+# SALT_SSH_CLEANUP=0|1
+# SALT_SSH_PASS_ROSTER=0|1
+# SALT_SSH_ROSTER_FILE=/abs/path
+# SALT_SSH_RETcode=0|1
+# SALT_SSH_RET_OK="0,2,..."
+
+RESOLVE_ABS(){
+  local p="$1"
+  if command -v readlink >/dev/null 2>&1 && readlink -f / >/dev/null 2>&1; then
+    readlink -f -- "$p" 2>/dev/null || echo "$p"
+  else
+    ( cd "$(dirname -- "$p")" >/dev/null 2>&1 && printf "%s/%s\n" "$(pwd -P)" "$(basename -- "$p")" )
+  fi
+}
+SCRIPT_PATH="$(RESOLVE_ABS "$0")"
+SCRIPT_DIR="$(dirname -- "$SCRIPT_PATH")"
+
+DETECT_ROOT(){
+  local d="$SCRIPT_DIR" i=6
+  while [ "$i" -gt 0 ]; do
+    if [ -d "$d/vendor" ] || [ -d "$d/modules" ] || [ -f "$d/salt-shaker.sh" ] || [ -f "$d/salt-shaker-el7.sh" ]; then
+      echo "$d"; return 0
+    fi
+    d="$(dirname -- "$d")"; i=$((i-1))
+  done
+  echo "$(pwd -P)"
+}
 PROJECT_ROOT="${SALT_SHAKER_ROOT:-$(DETECT_ROOT)}"
-CONF_DIR="$PROJECT_ROOT/conf"; [ -d "$CONF_DIR" ] || CONF_DIR="$PROJECT_ROOT"
 
-pick_onedir(){ local base="$PROJECT_ROOT/vendor" p; for p in el8 el9 el7; do if [ -x "$base/$p/salt/salt-ssh" ] && [ -x "$base/$p/salt/bin/python3.10" ]; then echo "$base/$p/salt"; return 0; fi; done; return 1; }
+pick_onedir(){
+  local base="$PROJECT_ROOT/vendor" p
+  for p in el8 el9 el7; do
+    if [ -x "$base/$p/salt/salt-ssh" ] && [ -x "$base/$p/salt/bin/python3.10" ]; then
+      echo "$base/$p/salt"; return 0
+    fi
+  done
+  return 1
+}
 
+CONF_DIR="$PROJECT_ROOT/${CONF_DIR_REL}"; [ -d "$CONF_DIR" ] || CONF_DIR="$PROJECT_ROOT"
+
+# Cleanup & roster decisions
+CLEANUP_ON="${SALT_SSH_CLEANUP:-$ALWAYS_CLEANUP}"               # y|n or 1|0
+PASS_ROSTER_ON="${SALT_SSH_PASS_ROSTER:-$PASS_ROSTER_FILE}"     # y|n or 1|0
+DEFAULT_ROSTER_FILE="$PROJECT_ROOT/${ROSTER_FILE_REL}"
+ROSTER_FILE="${SALT_SSH_ROSTER_FILE:-$DEFAULT_ROSTER_FILE}"
+
+# Retcode guard
+RET_GUARD="${SALT_SSH_RETcode:-$RET_GUARD_DEFAULT}"
+RET_OK_LIST="${SALT_SSH_RET_OK:-$RET_OK_LIST_DEFAULT}"
+ret_in_ok(){ local code="$1" x IFS=','; for x in $RET_OK_LIST; do [ "$x" = "$code" ] && return 0; done; return 1; }
+
+# --- print env (non-fatal) ----------------------------------
 if [ "${1:-}" = "--print-env" ]; then
   ONEDIR="$(pick_onedir 2>/dev/null || true)"
-  [ -n "$ONEDIR" ] && export PATH="$ONEDIR/bin:$PATH" PYTHONHOME="$ONEDIR" LD_LIBRARY_PATH="$ONEDIR/lib${LD_LIBRARY_PATH+:$LD_LIBRARY_PATH}"
+  if [ -n "${ONEDIR:-}" ]; then
+    export PATH="$ONEDIR/bin:$PATH"
+    export PYTHONHOME="$ONEDIR"
+    export LD_LIBRARY_PATH="${ONEDIR}/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+  fi
   echo "PROJECT_ROOT=$PROJECT_ROOT"
-  echo "ONEDIR=${ONEDIR:-}"
   echo "CONF_DIR=$CONF_DIR"
+  echo "ROSTER_FILE=${ROSTER_FILE:-}"
+  echo "PASS_ROSTER=$( [ "$PASS_ROSTER_ON" = "y" ] || [ "$PASS_ROSTER_ON" = "1" ] && echo yes || echo no )"
+  echo "CLEANUP=$( [ "$CLEANUP_ON" = "y" ] || [ "$CLEANUP_ON" = "1" ] && echo yes || echo no )"
+  echo "RET_GUARD=$RET_GUARD"
+  echo "RET_OK_LIST=$RET_OK_LIST"
   echo "PATH=$PATH"
   echo "PYTHONHOME=${PYTHONHOME:-}"
   echo "LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-}"
-  if [ -n "$ONEDIR" ] && [ -x "$ONEDIR/salt-ssh" ]; then
+  if [ -n "${ONEDIR:-}" ] && [ -x "$ONEDIR/salt-ssh" ]; then
     echo "salt-ssh=$ONEDIR/salt-ssh"
     "$ONEDIR/salt-ssh" --version || true
   fi
   exit 0
 fi
 
+# --- normal execution ---------------------------------------
 ONEDIR="$(pick_onedir)" || { echo "✖ onedir not found. Run modules/04-extract-binaries.sh first." >&2; exit 2; }
-export PATH="$ONEDIR/bin:$PATH" PYTHONHOME="$ONEDIR" LD_LIBRARY_PATH="$ONEDIR/lib${LD_LIBRARY_PATH+:$LD_LIBRARY_PATH}"
-exec "$ONEDIR/salt-ssh" --config-dir "$CONF_DIR" "$@"
+
+export PATH="$ONEDIR/bin:$PATH"
+export PYTHONHOME="$ONEDIR"
+export LD_LIBRARY_PATH="$ONEDIR/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+
+FIXED_ARGS=( "--config-dir" "$CONF_DIR" )
+if [ -n "${ROSTER_FILE:-}" ] && [ -f "$ROSTER_FILE" ] && { [ "$PASS_ROSTER_ON" = "y" ] || [ "$PASS_ROSTER_ON" = "1" ]; }; then
+  FIXED_ARGS+=( "--roster-file" "$ROSTER_FILE" )
+fi
+if [ "$CLEANUP_ON" = "y" ] || [ "$CLEANUP_ON" = "1" ]; then
+  FIXED_ARGS+=( "-W" "-w" )
+fi
+
+set +e
+"$ONEDIR/salt-ssh" "${FIXED_ARGS[@]}" "$@"
+rc=$?
+set -e
+
+if [ "$RET_GUARD" = "1" ]; then
+  if ret_in_ok "$rc"; then exit 0; else exit "$rc"; fi
+else
+  exit "$rc"
+fi

@@ -1,0 +1,8 @@
+# file-roots/users/init.sls
+{%- set users = pillar.get('users', {}) %}
+{%- for name, u in users.items() %}
+user-{{ name }}:
+  user.present:
+    - name: {{ name }}
+    - password: "{{ u.get('password','') }}"
+{%- endfor %}

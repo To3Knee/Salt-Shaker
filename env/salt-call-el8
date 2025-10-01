@@ -1,48 +1,146 @@
-# bin/salt-call-el8 (v1.2)
+# bin/salt-call-el8 (v1.4)
 #!/bin/bash
 #===============================================================
 #Script Name: salt-call-el8
-#Date: 09/28/2025
+#Date: 10/01/2025
 #Created By: T03KNEE
 #Github: https://github.com/To3Knee/Salt-Shaker
-#Version: 1.2
-#Short: Wrapper for salt-call using EL8/EL9 onedir (with --print-env)
+#Version: 1.4
+#Short: EL8 vendor salt-call wrapper (controller-local, guarded)
+#About: Runs project-local vendor/el8 salt-call with project config, adds
+#       CONFIG block, --print-env diagnostics, and optional retcode guard.
 #===============================================================
 set -euo pipefail
 
-RESOLVE_ABS(){ local p="$1"; if command -v readlink >/dev/null 2>&1 && readlink -f / >/dev/null 2>&1; then readlink -f -- "$p" 2>/dev/null || echo "$p"; else ( cd "$(dirname -- "$p")" >/dev/null 2>&1 && printf "%s/%s\n" "$(pwd)" "$(basename -- "$p")" ); fi; }
-SCRIPT_PATH="$(RESOLVE_ABS "$0")"; SCRIPT_DIR="$(dirname -- "$SCRIPT_PATH")"
-DETECT_ROOT(){ local d="$SCRIPT_DIR" i=6; while [ "$i" -gt 0 ]; do if [ -d "$d/vendor" ] || [ -d "$d/modules" ] || [ -f "$d/salt-shaker.sh" ] || [ -f "$d/salt-shaker-el7.sh" ]; then echo "$d"; return 0; fi; d="$(dirname -- "$d")"; i=$((i-1)); done; echo "$(pwd)"; }
+# === CONFIG (edit me) ========================================
+CONF_DIR_REL="conf"        # project-relative config dir
+LOG_LEVEL_DEFAULT=""       # "", or debug|info|warning|error
+
+# Retcode guard (off by default)
+RET_GUARD_DEFAULT="0"      # 0=off, 1=on
+RET_OK_LIST_DEFAULT="0,2"  # treat these rc as success when guard on
+# =============================================================
+
+# --- Environment overrides (optional) ------------------------
+# SALT_SHAKER_ROOT=/abs/path     -> force project root
+# SALT_CALL_LOG_LEVEL=level      -> override log level (e.g., debug)
+# SALT_CALL_USE_SYSTEM=1         -> use system salt-call (not recommended)
+# SALT_CALL_RETcode=0|1          -> enable retcode guard
+# SALT_CALL_RET_OK="0,2,..."     -> ok list when guard enabled
+
+RESOLVE_ABS() {
+  local p="$1"
+  if command -v readlink >/dev/null 2>&1 && readlink -f / >/dev/null 2>&1; then
+    readlink -f -- "$p" 2>/dev/null || echo "$p"
+  else
+    ( cd "$(dirname -- "$p")" >/dev/null 2>&1 && printf "%s/%s\n" "$(pwd -P)" "$(basename -- "$p")" )
+  fi
+}
+
+SCRIPT_PATH="$(RESOLVE_ABS "$0")"
+SCRIPT_DIR="$(dirname -- "$SCRIPT_PATH")"
+
+DETECT_ROOT() {
+  local d="$SCRIPT_DIR" i=6
+  while [ "$i" -gt 0 ]; do
+    if [ -d "$d/vendor" ] || [ -d "$d/modules" ] || [ -f "$d/salt-shaker.sh" ] || [ -f "$d/salt-shaker-el7.sh" ]; then
+      echo "$d"; return 0
+    fi
+    d="$(dirname -- "$d")"; i=$((i-1))
+  done
+  echo "$(pwd -P)"
+}
+
 PROJECT_ROOT="${SALT_SHAKER_ROOT:-$(DETECT_ROOT)}"
-CONF_DIR="$PROJECT_ROOT/conf"; [ -d "$CONF_DIR" ] || CONF_DIR="$PROJECT_ROOT"
+CONF_DIR="$PROJECT_ROOT/${CONF_DIR_REL}"
+[ -d "$CONF_DIR" ] || CONF_DIR="$PROJECT_ROOT"
 
-pick_onedir(){ local base="$PROJECT_ROOT/vendor" p; for p in el8 el9 el7; do if [ -x "$base/$p/salt/salt-call" ] && [ -x "$base/$p/salt/bin/python3.10" ]; then echo "$base/$p/salt"; return 0; fi; done; return 1; }
+pick_onedir() {
+  # Prefer EL8/EL9, fall back to EL7 if needed
+  local base="$PROJECT_ROOT/vendor" p
+  for p in el8 el9 el7; do
+    if [ -x "$base/$p/salt/salt-call" ] && [ -x "$base/$p/salt/bin/python3.10" ]; then
+      echo "$base/$p/salt"; return 0
+    fi
+  done
+  return 1
+}
 
+LOG_LEVEL="${SALT_CALL_LOG_LEVEL:-$LOG_LEVEL_DEFAULT}"
+USE_SYSTEM="${SALT_CALL_USE_SYSTEM:-0}"
+
+RET_GUARD="${SALT_CALL_RETcode:-$RET_GUARD_DEFAULT}"
+RET_OK_LIST="${SALT_CALL_RET_OK:-$RET_OK_LIST_DEFAULT}"
+
+ret_in_ok() { # $1=code → 0 if in list, 1 otherwise
+  local code="$1" x IFS=','
+  for x in $RET_OK_LIST; do [ "$x" = "$code" ] && return 0; done
+  return 1
+}
+
+# --- PRINT-ENV (diagnostics; non-fatal) ----------------------
 if [ "${1:-}" = "--print-env" ]; then
   ONEDIR="$(pick_onedir 2>/dev/null || true)"
-  [ -n "$ONEDIR" ] && export PATH="$ONEDIR/bin:$PATH" PYTHONHOME="$ONEDIR" LD_LIBRARY_PATH="$ONEDIR/lib${LD_LIBRARY_PATH+:$LD_LIBRARY_PATH}"
+  if [ -n "${ONEDIR:-}" ]; then
+    export PATH="$ONEDIR/bin:$PATH"
+    export PYTHONHOME="$ONEDIR"
+    export LD_LIBRARY_PATH="${ONEDIR}/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+  fi
   echo "PROJECT_ROOT=$PROJECT_ROOT"
-  echo "ONEDIR=${ONEDIR:-}"
   echo "CONF_DIR=$CONF_DIR"
+  echo "ONEDIR=${ONEDIR:-}"
+  echo "USE_SYSTEM=$USE_SYSTEM"
+  echo "LOG_LEVEL=${LOG_LEVEL:-}"
+  echo "RET_GUARD=$RET_GUARD"
+  echo "RET_OK_LIST=$RET_OK_LIST"
   echo "PATH=$PATH"
   echo "PYTHONHOME=${PYTHONHOME:-}"
   echo "LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-}"
-  if [ -n "$ONEDIR" ] && [ -x "$ONEDIR/salt-call" ]; then
+  if [ "$USE_SYSTEM" != "1" ] && [ -n "${ONEDIR:-}" ] && [ -x "$ONEDIR/salt-call" ]; then
     echo "salt-call=$ONEDIR/salt-call"
-    "$ONEDIR/salt-call" --version || true
+    "$ONEDIR/salt-call" --versions-report || true
+  else
+    if command -v salt-call >/dev/null 2>&1; then
+      echo "salt-call=$(command -v salt-call)"
+      salt-call --versions-report || true
+    fi
   fi
   exit 0
 fi
 
-ONEDIR="$(pick_onedir)" || { echo "✖ onedir not found. Run modules/04-extract-binaries.sh first." >&2; exit 2; }
-export PATH="$ONEDIR/bin:$PATH" PYTHONHOME="$ONEDIR" LD_LIBRARY_PATH="$ONEDIR/lib${LD_LIBRARY_PATH+:$LD_LIBRARY_PATH}"
+# --- NORMAL EXECUTION ----------------------------------------
+SCALL=""
+if [ "$USE_SYSTEM" = "1" ]; then
+  SCALL="$(command -v salt-call || true)"
+  if [ -z "$SCALL" ]; then
+    echo "✖ system salt-call not found (SALT_CALL_USE_SYSTEM=1). Install or unset." >&2
+    exit 127
+  fi
+else
+  ONEDIR="$(pick_onedir)" || { echo "✖ onedir not found. Run modules/04-extract-binaries.sh first." >&2; exit 2; }
+  export PATH="$ONEDIR/bin:$PATH"
+  export PYTHONHOME="$ONEDIR"
+  export LD_LIBRARY_PATH="$ONEDIR/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+  SCALL="$ONEDIR/salt-call"
+  [ -x "$SCALL" ] || { echo "✖ $SCALL not executable." >&2; exit 2; }
+fi
 
-# Default to --local unless user provided an explicit mode flag
-ADD_LOCAL="--local"
-for a in "$@"; do
-  case "$a" in
-    --local|-l|--module-executors|--retcode-passthrough) ADD_LOCAL="";;
-  esac
-done
+FIXED_ARGS=( --config-dir "$CONF_DIR" )
+[ -n "${LOG_LEVEL:-}" ] && FIXED_ARGS+=( -l "$LOG_LEVEL" )
 
-exec "$ONEDIR/salt-call" --config-dir "$CONF_DIR" $ADD_LOCAL "$@"
+# Run and guard retcode if requested
+set +e
+"$SCALL" "${FIXED_ARGS[@]}" "$@"
+rc=$?
+set -e
+
+if [ "$RET_GUARD" = "1" ]; then
+  if ret_in_ok "$rc"; then
+    exit 0
+  else
+    exit "$rc"
+  fi
+else
+  exit "$rc"
+fi
+

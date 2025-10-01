@@ -5,385 +5,371 @@
 #Created By: T03KNEE
 #Github: https://github.com/To3Knee/Salt-Shaker
 #Version: 1.8
-#Short: Salt-SSH remote connectivity smoke test (CSV + vendor override)
-#About: Lets you choose a target from roster/data/hosts-all-pods.csv or enter it
-#       manually. On-screen option to force the local vendor tree (el7/el8/el9)
-#       used for salt-ssh regardless of target platform. After run, warns if the
-#       declared platform (CSV/manual) mismatches the remote osmajorrelease.
-#       Uses password-only SSH, disables host-key writes, and forces a fresh
-#       Salt Thin (-W -w -t). All artifacts remain in the project folder.
+#Short: Interactive salt-ssh connectivity test (CSV/manual + header fix)
+#About: Tests salt-ssh reachability using project-local wrappers. Adds:
+#       - On-screen "Fix CSV header now?" (repairs header only; preserves BOM/CRLF)
+#       - Robust CSV parser for quoted fields and commas
+#       Prints 'Cleanup: on/off' and uses -W -w when enabled. Project-local only.
 #===============================================================
 
 umask 077
+set -euo pipefail
 
-# ---------- Colors / UI ----------
-if [ -t 1 ] && [ -z "$NO_COLOR" ]; then
+# ================== CONFIG (edit me) ==================
+PROJECT_ROOT_DEFAULT=""           # auto-detect when empty
+CSV_PATH_REL="roster/data/hosts-all-pods.csv"
+CONF_DIR_REL="conf"
+TMP_DIR_REL="tmp"
+LOGS_DIR_REL="logs"
+
+# Default wrapper preference (first found)
+PREF_WRAPPERS="el8 el9 el7"
+
+# Interactive defaults
+ASK_FROM_CSV_DEFAULT="y"          # y|n
+CLEANUP_DEFAULT="y"               # y|n
+DEFAULT_PORT="22"
+DEFAULT_USER="root"
+DEFAULT_PLATFORM="el7"            # display only for manual mode
+# =====================================================
+
+# ---------- Colors/UI ----------
+if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
   C_RESET="\033[0m"; C_BOLD="\033[1m"
-  C_RED="\033[31m"; C_GRN="\033[32m"; C_YLW="\033[33m"; C_BLU="\033[34m"; C_CYN="\033[36m"; C_MAG="\033[35m"
+  C_RED="\033[31m"; C_GRN="\033[32m"; C_YLW="\033[33m"; C_CYN="\033[36m"
 else
-  C_RESET=""; C_BOLD=""; C_RED=""; C_GRN=""; C_YLW=""; C_BLU=""; C_CYN=""; C_MAG=""
+  C_RESET=""; C_BOLD=""; C_RED=""; C_GRN=""; C_YLW=""; C_CYN=""
 fi
-ICON_OK="${C_GRN}✓${C_RESET}"
-ICON_WARN="${C_YLW}!${C_RESET}"
-ICON_ERR="${C_RED}✖${C_RESET}"
-ui_hr()      { printf '%b\n' "${C_CYN}──────────────────────────────────────────────────────────────${C_RESET}"; }
-ui_title()   { ui_hr; printf '%b\n' "${C_BOLD}${C_GRN}SALT SHAKER${C_RESET} ${C_CYN}|${C_RESET} ${C_BOLD}Module 07 · Remote Test${C_RESET}"; ui_hr; }
-ui_section() { printf '%b\n' "${C_BOLD}${1}${C_RESET}"; }
-ui_kv()      { printf '%b\n' "  ${C_BOLD}$1${C_RESET}: $2"; }
-ui_ok()      { printf '%b\n' "  ${ICON_OK} $1"; }
-ui_warn()    { printf '%b\n' "  ${ICON_WARN} $1"; }
-ui_err()     { printf '%b\n' "  ${ICON_ERR} $1"; }
+ICON_OK="${C_GRN}✓${C_RESET}"; ICON_ERR="${C_RED}✖${C_RESET}"; ICON_WARN="${C_YLW}!${C_RESET}"
+ui_hr(){ printf '%b\n' "${C_CYN}──────────────────────────────────────────────────────────────${C_RESET}"; }
+ui_title(){ ui_hr; printf '%b\n' "${C_BOLD}${C_GRN}SALT SHAKER${C_RESET} ${C_CYN}|${C_RESET} ${C_BOLD}Module 07 · Remote Test${C_RESET}"; ui_hr; }
+ui_section(){ printf '%b\n' "${C_BOLD}$1${C_RESET}"; }
+ui_kv(){ printf '%b\n' "  ${C_BOLD}$1${C_RESET}: $2"; }
+ui_ok(){ printf '%b\n' "  ${ICON_OK} $1"; }
+ui_err(){ printf '%b\n' "  ${ICON_ERR} $1"; }
+ui_warn(){ printf '%b\n' "  ${ICON_WARN} $1"; }
 
-# ---------- Module constants ----------
-MODULE_NAME="07-remote-test.sh"
-CANON_HEADER='pod,platform,host,port,user,auth,sudo,python2_bin,ssh_args,minion_id,groups,notes'
+stamp(){ date '+%Y-%m-%d %H:%M:%S'; }
 
-# ---------- Defaults / CLI ----------
-PLATFORM="el7"          # target platform label (CSV/manual)
-HOST=""
-USER="root"
-PORT="22"
-USE_SUDO="n"
-LOG_LEVEL="info"
-PY2_BIN="/usr/bin/python"
-MINION_ID=""
-PROJECT_ROOT=""
-CSV_PICK=0
-CSV_PATH=""
-CSV_INDEX=""
-NON_INTERACTIVE=0
-FORCE_VENDOR=""         # optional override: el7|el8|el9
-START_TS=$(date +%s)
-RUN_TS=$(date +%Y%m%d-%H%M%S)
+# ---------- Project root detection ----------
+RESOLVE_ABS(){ local p="$1"; if command -v readlink >/dev/null 2>&1 && readlink -f / >/dev/null 2>&1; then readlink -f -- "$p" 2>/dev/null || echo "$p"; else ( cd "$(dirname -- "$p")" >/dev/null 2>&1 && printf "%s/%s\n" "$(pwd -P)" "$(basename -- "$p")" ); fi; }
+DETECT_ROOT(){
+  local d; d="$(dirname -- "$(RESOLVE_ABS "$0")")"; local i=6
+  while [ "$i" -gt 0 ]; do
+    if [ -d "$d/vendor" ] || [ -d "$d/modules" ] || [ -f "$d/salt-shaker.sh" ] || [ -f "$d/salt-shaker-el7.sh" ]; then
+      echo "$d"; return 0
+    fi
+    d="$(dirname -- "$d")"; i=$((i-1))
+  done
+  pwd -P
+}
+PROJECT_ROOT="${PROJECT_ROOT_DEFAULT:-$(DETECT_ROOT)}"
+CONF_DIR="${PROJECT_ROOT}/${CONF_DIR_REL}"
+CSV_PATH="${PROJECT_ROOT}/${CSV_PATH_REL}"
+TMP_DIR="${PROJECT_ROOT}/${TMP_DIR_REL}"
+LOGS_DIR="${PROJECT_ROOT}/${LOGS_DIR_REL}"
+mkdir -p "$TMP_DIR" "$LOGS_DIR" 2>/dev/null || true
+chmod 700 "$TMP_DIR" "$LOGS_DIR" 2>/dev/null || true
 
-# Salt-SSH hardening flags:
-SSH_FLAGS_COMMON="--no-host-keys --identities-only"
-THIN_FLAGS="-W -w -t"   # rand-thin-dir + wipe + regen-thin
-
-# ---------- Logging (project-only) ----------
-stamp() { date '+%Y-%m-%d %H:%M:%S'; }
-LOG_FILE=""
-TMP_ROSTER=""
-GR_TMP=""
-log_init_done=0
-log_init() {
-  [ $log_init_done -eq 1 ] && return 0
-  [ -z "$PROJECT_ROOT" ] && PROJECT_ROOT="$(pwd)"
-  mkdir -p "${PROJECT_ROOT}/logs" 2>/dev/null
-  chmod 700 "${PROJECT_ROOT}/logs" 2>/dev/null
-  LOG_FILE="${PROJECT_ROOT}/logs/salt-shaker.log"
-  log_init_done=1
-}
-log()  { log_init; printf '%s [%s] (%s) %s\n' "$(stamp)" "$1" "$MODULE_NAME" "$2" | tee -a "$LOG_FILE" >/dev/null; }
-info() { log "INFO"  "$1"; }
-warn() { log "WARN"  "$1"; }
-error(){ log "ERROR" "$1"; }
-
-# ---------- Temp (project-only) ----------
-mk_local_tmpfile() {
-  mkdir -p "${PROJECT_ROOT}/tmp" 2>/dev/null
-  chmod 700 "${PROJECT_ROOT}/tmp" 2>/dev/null
-  local f="${PROJECT_ROOT}/tmp/remote-test.${RUN_TS}.$$.$RANDOM.roster.yaml"
-  : > "$f" || { error "Failed to create temp roster in project tmp"; exit 1; }
-  TMP_ROSTER="$f"
-  echo "$f"
-}
-mk_grains_tmpfile() {
-  mkdir -p "${PROJECT_ROOT}/tmp" 2>/dev/null
-  chmod 700 "${PROJECT_ROOT}/tmp" 2>/dev/null
-  local f="${PROJECT_ROOT}/tmp/remote-test.${RUN_TS}.$$.$RANDOM.grains.txt"
-  : > "$f" || { error "Failed to create grains temp file"; exit 1; }
-  GR_TMP="$f"
-  echo "$f"
-}
-
-# ---------- TTY helpers ----------
-HAS_TTY=0
-open_tty() {
-  if [ -r /dev/tty ] && [ -w /dev/tty ] ; then exec 3<> /dev/tty; HAS_TTY=1; else HAS_TTY=0; fi
-}
-close_tty() { [ "$HAS_TTY" -eq 1 ] && exec 3<&- 3>&-; }
-prompt_tty() {
-  # $1 prompt, $2 default, $3 "req"
-  local p="$1"; local d="$2"; local req="$3"; local ans=""
-  if [ "$HAS_TTY" -eq 1 ] && [ $NON_INTERACTIVE -eq 0 ]; then
-    /bin/echo -en "${C_BOLD}${p}${C_RESET} [${d}]: " >&3
-    IFS= read -r ans <&3; [ -z "$ans" ] && ans="$d"
-  else
-    ans="$d"
-  fi
-  if [ -z "$ans" ] && [ "$req" = "req" ]; then ui_err "$p is required. Supply via CLI."; exit 2; fi
-  echo "$ans"
-}
-
-# ---------- CSV helpers (BOM-safe) ----------
-csv_list_rows() {
-  sed $'1s/^\xEF\xBB\xBF//' "$1" | awk -v max="$2" -v hdr="$CANON_HEADER" '
-    BEGIN{ FPAT="([^,]*)|(\"[^\"]*\")"; row=0; }
-    NR==1 { line=$0; sub(/\r$/,"",line); if(line!=hdr){ print "HEADER_MISMATCH"; exit 0 } next }
-    { n=NF; if(n<12) next
-      for(i=1;i<=12;i++){ gsub(/^[ \t]+|[ \t]+$/, "", $i); if($i ~ /^\".*\"$/){ sub(/^\"/,"",$i); sub(/\"$/,"",$i) } }
-      row++; if(row<=max){ printf("%d\t%s\t%s\t%s\t%s\t%s\t%s\n", row, $2, $3, $5, $4, $7, ($10==""?$3:$10)); }
-    }'
-}
-csv_get_row() {
-  sed $'1s/^\xEF\xBB\xBF//' "$1" | awk -v idx="$2" -v hdr="$CANON_HEADER" '
-    BEGIN{ FPAT="([^,]*)|(\"[^\"]*\")"; row=0; found=0 }
-    NR==1 { line=$0; sub(/\r$/,"",line); if(line!=hdr){ print "HEADER_MISMATCH"; exit 0 } next }
-    { n=NF; if(n<12) next
-      for(i=1;i<=12;i++){ gsub(/^[ \t]+|[ \t]+$/, "", $i); if($i ~ /^\".*\"$/){ sub(/^\"/,"",$i); sub(/\"$/,"",$i) } }
-      row++; if(row==idx){ for(i=1;i<=12;i++){ printf("%s%s",$i,(i<12?"\t":"\n")) } found=1; exit 0 }
-    }'
-}
-emit_ssh_options_from_args() {
-  RAW="$1"; [ -z "$RAW" ] && return 0
-  JUMP="$(printf '%s\n' "$RAW" | sed -n 's/.*-J[[:space:]]\+\([^[:space:]]\+\).*/\1/p' | head -n1)"
-  [ -n "$JUMP" ] && echo "    - ProxyJump ${JUMP}"
-  printf '%s\n' "$RAW" | tr ' ' '\n' | awk '/^-o/ { s=$0; sub(/^-o/,"",s); if(s!=""){ print "    - " s } }'
-}
-
-# ---------- Help / About ----------
-print_help() {
-  ui_title; ui_section "Usage"; echo "  $MODULE_NAME [options]"; echo
-  ui_section "Options"
-  echo "  -h, --help                Show help"
-  echo "  -a, --about               About module"
-  echo "  -d, --dir <path>          Project root override"
-  echo "  -p, --platform <elX>      Target platform label (el7|el8|el9) [el7]"
-  echo "  -t, --host <host/ip>      Target host or IP"
-  echo "  -u, --user <name>         SSH username [root]"
-  echo "  -P, --port <num>          SSH port [22]"
-  echo "  -S, --sudo <y|n>          Use sudo [n]"
-  echo "  -i, --id <minion_id>      Minion id (default: host)"
-  echo "  -L, --log-level <lvl>     info|debug [info]"
-  echo "      --python2-bin <p>     EL7 remote python path [/usr/bin/python]"
-  echo "      --non-interactive     No prompts; fail if missing args"
-  echo "      --targets-from-csv    Pick row from roster CSV (also auto-prompted)"
-  echo "      --csv <path>          CSV path (default: roster/data/hosts-all-pods.csv)"
-  echo "      --index <N>           CSV row index (1-based, excluding header)"
-  echo "      --force-vendor <elX>  Force local vendor used (el7|el8|el9)"
-  ui_hr
-}
-print_about() {
-  ui_title; ui_section "About"
-  echo "Portable salt-ssh smoke test. Choose from CSV or enter manually."
-  echo "You can also force which local vendor tree is used for salt-ssh."
-  ui_hr
-}
-
-# ---------- CLI parsing ----------
+# ---------- CLI ----------
+SHOW_ABOUT=0; SHOW_HELP=0
+FORCE_VENDOR_TEST=0
+TARGETS_FROM_CSV=0
+CLEANUP_CHOICE=""           # on|off
+FIX_CSV_HEADER_FLAG=0
 while [ $# -gt 0 ]; do
   case "$1" in
-    -h|--help) print_help; exit 0 ;;
-    -a|--about) print_about; exit 0 ;;
-    -d|--dir) shift; PROJECT_ROOT="$1" ;;
-    -p|--platform) shift; PLATFORM="$1" ;;
-    -t|--host) shift; HOST="$1" ;;
-    -u|--user) shift; USER="$1" ;;
-    -P|--port) shift; PORT="$1" ;;
-    -S|--sudo) shift; USE_SUDO="$1" ;;
-    -i|--id) shift; MINION_ID="$1" ;;
-    -L|--log-level) shift; LOG_LEVEL="$1" ;;
-    --python2-bin) shift; PY2_BIN="$1" ;;
-    --non-interactive) NON_INTERACTIVE=1 ;;
-    --targets-from-csv) CSV_PICK=1 ;;
-    --csv) shift; CSV_PATH="$1" ;;
-    --index) shift; CSV_INDEX="$1" ;;
-    --force-vendor) shift; FORCE_VENDOR="$1" ;;
-    *) warn "Unknown argument: $1"; print_help; exit 2 ;;
-  esac; shift
+    -h|--help) SHOW_HELP=1 ;;
+    -a|--about) SHOW_ABOUT=1 ;;
+    --force-vendor-test) FORCE_VENDOR_TEST=1 ;;
+    --targets-from-csv) TARGETS_FROM_CSV=1 ;;
+    --cleanup) shift || true; CLEANUP_CHOICE="${1:-}";;
+    --fix-csv-header) FIX_CSV_HEADER_FLAG=1 ;;
+    *) ui_err "Unknown option: $1"; SHOW_HELP=1 ;;
+  esac
+  shift || true
 done
 
-# ---------- Project root ----------
-if [ -z "$PROJECT_ROOT" ]; then
-  THIS_DIR="$(cd "$(dirname "$0")" 2>/dev/null && pwd)"
-  PARENT="$(cd "$THIS_DIR/.." 2>/dev/null && pwd)"
-  if [ -d "$PARENT/modules" ] && [ -d "$PARENT/offline" ]; then PROJECT_ROOT="$PARENT"; else PROJECT_ROOT="$(pwd)"; fi
-fi
-log_init; open_tty
-
-# ---------- Title ----------
-ui_title; ui_section "Remote Test"; printf "Project Root : %s\n" "$PROJECT_ROOT"
-
-# ---------- Offer CSV picker (interactive) ----------
-if [ $NON_INTERACTIVE -eq 0 ] && [ $CSV_PICK -eq 0 ] && [ "$HAS_TTY" -eq 1 ]; then
-  CHOICE="$(prompt_tty 'Load target from CSV? (Y/n)' 'Y')"
-  case "$CHOICE" in n|N) CSV_PICK=0 ;; *) CSV_PICK=1 ;; esac
-fi
-
-# ---------- CSV selection ----------
-if [ $CSV_PICK -eq 1 ]; then
-  [ -n "$CSV_PATH" ] || CSV_PATH="${PROJECT_ROOT}/roster/data/hosts-all-pods.csv"
-  if [ ! -f "$CSV_PATH" ]; then ui_warn "CSV not found: $CSV_PATH — using manual prompts"; CSV_PICK=0; fi
-fi
-if [ $CSV_PICK -eq 1 ]; then
-  if [ -z "$CSV_INDEX" ] && [ "$HAS_TTY" -eq 1 ] && [ $NON_INTERACTIVE -eq 0 ]; then
-    /bin/echo -e "${C_BOLD}Select a target from CSV:${C_RESET}" >&3
-    LIST="$(csv_list_rows "$CSV_PATH" 50)"
-    if echo "$LIST" | head -n1 | grep -q '^HEADER_MISMATCH'; then ui_err "CSV header mismatch. Run module 02."; exit 2; fi
-    printf "%b\n" "  Id  Platform  Host               User   Port  Sudo  MinionId"
-    printf "%b\n" "  --  --------  -----------------  -----  ----  ----  --------"
-    echo "$LIST" | while IFS=$'\t' read -r idx plat host user port sudo mid; do
-      printf "  %-3s %-8s %-18s %-6s %-5s %-5s %s\n" "$idx" "$plat" "$host" "$user" "$port" "$sudo" "$mid"
-    done
-    CSV_INDEX="$(prompt_tty 'Enter index' '' 'req')"
-  fi
-  ROW="$(csv_get_row "$CSV_PATH" "$CSV_INDEX")"
-  if printf '%s' "$ROW" | grep -q '^HEADER_MISMATCH'; then ui_err "CSV header mismatch. Run module 02."; exit 2; fi
-  [ -n "$ROW" ] || { ui_err "Index not found in CSV: $CSV_INDEX"; exit 2; }
-  POD="$(printf '%s' "$ROW" | awk -F'\t' '{print $1}')"
-  PLATFORM="$(printf '%s' "$ROW" | awk -F'\t' '{print $2}')"
-  HOST="$(printf '%s' "$ROW" | awk -F'\t' '{print $3}')"
-  PORT="$(printf '%s' "$ROW" | awk -F'\t' '{print $4}')"
-  USER="$(printf '%s' "$ROW" | awk -F'\t' '{print $5}')"
-  AUTHMODE="$(printf '%s' "$ROW" | awk -F'\t' '{print $6}')"
-  SUDOFLAG="$(printf '%s' "$ROW" | awk -F'\t' '{print $7}')"
-  PY2_BIN_CSV="$(printf '%s' "$ROW" | awk -F'\t' '{print $8}')"
-  SSH_ARGS_CSV="$(printf '%s' "$ROW" | awk -F'\t' '{print $9}')"
-  MINION_ID_CSV="$(printf '%s' "$ROW" | awk -F'\t' '{print $10}')"
-  [ -z "$PORT" ] && PORT="22"; [ -z "$USER" ] && USER="root"
-  if [ "$SUDOFLAG" = "y" ] || [ "$SUDOFLAG" = "Y" ]; then USE_SUDO="y"; else USE_SUDO="n"; fi
-  [ -n "$MINION_ID_CSV" ] && MINION_ID="$MINION_ID_CSV"
-  if [ "$PLATFORM" = "el7" ] && [ -n "$PY2_BIN_CSV" ]; then PY2_BIN="$PY2_BIN_CSV"; fi
-fi
-
-# ---------- Manual prompts ----------
-if [ $CSV_PICK -eq 0 ]; then
-  case "$PLATFORM" in el7|el8|el9) : ;; *) PLATFORM="$(prompt_tty 'Target platform (el7/el8/el9)' 'el7' 'req')";; esac
-  [ -n "$HOST" ] || HOST="$(prompt_tty 'Target host/IP' '' 'req')"
-  USER="$(prompt_tty 'SSH username' "$USER")"
-  PORT="$(prompt_tty 'SSH port' "$PORT")"
-  if [ "$USE_SUDO" != "y" ] && [ "$USE_SUDO" != "n" ]; then USE_SUDO="$(prompt_tty 'Use sudo? (y/N)' 'n')"; fi
-fi
-
-# ---------- On-screen vendor override ----------
-if [ $NON_INTERACTIVE -eq 0 ] && [ "$HAS_TTY" -eq 1 ] && [ -z "$FORCE_VENDOR" ]; then
-  VCHOICE="$(prompt_tty 'Force local vendor (n/el7/el8/el9)' 'n')"
-  case "$VCHOICE" in el7|el8|el9) FORCE_VENDOR="$VCHOICE" ;; *) FORCE_VENDOR="" ;; esac
-fi
-VENDOR_PLAT="${FORCE_VENDOR:-$PLATFORM}"
-
-# ---------- Resolve salt-ssh binary ----------
-VENDOR_DIR="${PROJECT_ROOT}/vendor/${VENDOR_PLAT}"
-SSSH_BIN="${VENDOR_DIR}/bin/salt-ssh"
-if [ ! -x "$SSSH_BIN" ] && [ -x "${PROJECT_ROOT}/bin/salt-ssh-${VENDOR_PLAT}" ]; then
-  SSSH_BIN="${PROJECT_ROOT}/bin/salt-ssh-${VENDOR_PLAT}"
-fi
-[ -x "$SSSH_BIN" ] || { ui_err "salt-ssh not found for local vendor ${VENDOR_PLAT}. Run module 04."; exit 2; }
-
-# ---------- Portable env ----------
-export PATH="${VENDOR_DIR}/bin:${PATH}"
-export PYTHONHOME="${VENDOR_DIR}"
-if [ -d "${VENDOR_DIR}/lib" ]; then export LD_LIBRARY_PATH="${VENDOR_DIR}/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"; fi
-
-# ---------- Compose flags ----------
-SUDO_FLAG=""; [ "$USE_SUDO" = "y" ] && SUDO_FLAG="--sudo"
-[ -z "$MINION_ID" ] && MINION_ID="$HOST"
-LOG_RUN_FILE="${PROJECT_ROOT}/logs/ssh-${RUN_TS}.log"
-
-# ---------- Build temp roster ----------
-TMP_ROSTER="$(mk_local_tmpfile)"
-{
-  echo "${MINION_ID}:"
-  echo "  host: ${HOST}"
-  echo "  user: ${USER}"
-  echo "  port: ${PORT}"
-  if [ "$USE_SUDO" = "y" ]; then echo "  sudo: True"; echo "  tty: True"; else echo "  sudo: False"; echo "  tty: False"; fi
-  echo "  ignore_host_keys: True"
-  echo "  ssh_options:"
-  echo "    - PreferredAuthentications=password"
-  echo "    - PasswordAuthentication=yes"
-  echo "    - PubkeyAuthentication=no"
-  echo "    - KbdInteractiveAuthentication=no"
-  echo "    - GSSAPIAuthentication=no"
-  echo "    - IdentitiesOnly=yes"
-  echo "    - NumberOfPasswordPrompts=1"
-  echo "    - StrictHostKeyChecking=no"
-  echo "    - UserKnownHostsFile=/dev/null"
-  if [ $CSV_PICK -eq 1 ] && [ -n "$SSH_ARGS_CSV" ]; then emit_ssh_options_from_args "$SSH_ARGS_CSV"; fi
-  if [ "$PLATFORM" = "el7" ]; then echo "  python2_bin: ${PY2_BIN}"; fi
-} >> "$TMP_ROSTER"
-
-# ---------- Preflight ----------
-ui_kv "Wrapper"     "$(basename "$SSSH_BIN")"
-ui_kv "Platform"    "$PLATFORM"
-ui_kv "Vendor Local" "$VENDOR_PLAT"
-ui_kv "Target"      "${USER}@${HOST}:${PORT}"
-ui_kv "Sudo/TTY"    "$( [ "$USE_SUDO" = "y" ] && echo true || echo false )/$( [ "$USE_SUDO" = "y" ] && echo true || echo false )"
-ui_kv "Roster"      "$TMP_ROSTER"
-ui_kv "SSH Log"     "$LOG_RUN_FILE"
-ui_hr
-
-# ---------- Execute tests ----------
-printf '• test.ping ... '
-"$SSSH_BIN" \
-  $SSH_FLAGS_COMMON \
-  $THIN_FLAGS \
-  --roster=flat \
-  --roster-file "$TMP_ROSTER" \
-  --askpass \
-  $SUDO_FLAG \
-  -l "$LOG_LEVEL" \
-  --log-file "$LOG_RUN_FILE" \
-  "$MINION_ID" test.ping
-TP_RC=$?
-[ $TP_RC -eq 0 ] && printf '%b\n' "${ICON_OK} test.ping" || printf '%b\n' "${ICON_ERR} test.ping"
-
-# Capture grains for post-run analysis
-GR_TMP="$(mk_grains_tmpfile)"
-printf '• grains.item osfinger osmajorrelease pythonversion ... '
-"$SSSH_BIN" \
-  $SSH_FLAGS_COMMON \
-  $THIN_FLAGS \
-  --roster=flat \
-  --roster-file "$TMP_ROSTER" \
-  --askpass \
-  $SUDO_FLAG \
-  -l "$LOG_LEVEL" \
-  --log-file "$LOG_RUN_FILE" \
-  "$MINION_ID" grains.item osfinger osmajorrelease pythonversion | tee "$GR_TMP"
-GR_RC=${PIPESTATUS[0]}
-[ $GR_RC -eq 0 ] && printf '%b\n' "${ICON_OK} grains.item" || printf '%b\n' "${ICON_WARN} grains.item"
-
-# ---------- Parse grains for mismatch warning ----------
-parse_grain_val() {
-  # $1 file, $2 key -> prints first scalar value following "key:"
-  awk -v key="$2" '
-    BEGIN{show=0}
-    { sub(/\r$/,"",$0) }
-    $1 ~ key":" { show=1; next }
-    show==1 && $0 ~ /^[[:space:]]*[^[:space:]]/ { s=$0; sub(/^[[:space:]]+/,"",s); print s; exit }
-  ' "$1"
+print_help(){
+  ui_title
+  ui_section "Usage"
+  echo "  modules/07-remote-test.sh [--targets-from-csv] [--force-vendor-test]"
+  echo "                             [--cleanup on|off] [--fix-csv-header]"
+  ui_section "Notes"
+  echo "  - Uses project-local wrappers; never writes outside the project."
+  echo "  - 'Fix CSV header' rewrites the first line only (preserves BOM/CRLF)."
+  echo "  - When cleanup is on, remote thin dirs are randomized and wiped (-W -w)."
+  ui_hr
 }
-REMOTE_OSFINGER="$(parse_grain_val "$GR_TMP" "osfinger")"
-REMOTE_OSMAJOR="$(parse_grain_val "$GR_TMP" "osmajorrelease")"
-# Fallback: derive major from osfinger if osmajorrelease empty
-if [ -z "$REMOTE_OSMAJOR" ] && [ -n "$REMOTE_OSFINGER" ]; then
-  REMOTE_OSMAJOR="$(printf '%s' "$REMOTE_OSFINGER" | grep -o '[0-9]\+' | head -n1)"
-fi
-# Expected major from declared platform
-case "$PLATFORM" in el7) EXPECT_MAJOR="7" ;; el8) EXPECT_MAJOR="8" ;; el9) EXPECT_MAJOR="9" ;; *) EXPECT_MAJOR="" ;; esac
+print_about(){
+  ui_title
+  ui_section "About"
+  echo "Interactive salt-ssh test. Choose a CSV row or enter manually."
+  echo "CSV header can be fixed in-place if Excel/edits broke it."
+  ui_hr
+}
+[ "$SHOW_HELP" -eq 1 ] && { print_help; exit 0; }
+[ "$SHOW_ABOUT" -eq 1 ] && { print_about; exit 0; }
 
-if [ -n "$EXPECT_MAJOR" ] && [ -n "$REMOTE_OSMAJOR" ] && [ "$EXPECT_MAJOR" != "$REMOTE_OSMAJOR" ]; then
-  ui_warn "Platform mismatch: declared ${PLATFORM} (expect ${EXPECT_MAJOR}) vs remote ${REMOTE_OSFINGER:-unknown} (major ${REMOTE_OSMAJOR})."
-  ui_warn "Local vendor used: ${VENDOR_PLAT}. If incorrect, rerun and force vendor accordingly."
+# ---------- TTY prompts ----------
+HAS_TTY=0; if [ -r /dev/tty ] && [ -w /dev/tty ]; then exec 3<> /dev/tty; HAS_TTY=1; fi
+ask_yn(){ local q="$1" def="$2" ans=""; if [ "$HAS_TTY" -eq 1 ]; then /bin/echo -en "${C_BOLD}${q}${C_RESET} [${def}]: " >&3; IFS= read -r ans <&3 || ans=""; fi; [ -z "$ans" ] && ans="$def"; case "$ans" in y|Y) return 0;; *) return 1;; esac; }
+ask_line(){ local q="$1" def="$2" ans=""; if [ "$HAS_TTY" -eq 1 ]; then /bin/echo -en "${C_BOLD}${q}${C_RESET} [${def}]: " >&3; IFS= read -r ans <&3 || ans=""; fi; [ -z "$ans" ] && ans="$def"; printf '%s' "$ans"; }
+
+# ---------- Wrapper pick ----------
+pick_wrapper(){
+  local p
+  for p in $PREF_WRAPPERS; do
+    if [ -x "${PROJECT_ROOT}/bin/salt-ssh-${p}" ]; then echo "${PROJECT_ROOT}/bin/salt-ssh-${p}"; return 0; fi
+  done
+  for p in el8 el9 el7; do
+    if [ -x "${PROJECT_ROOT}/vendor/${p}/salt/salt-ssh" ]; then echo "${PROJECT_ROOT}/vendor/${p}/salt/salt-ssh"; return 0; fi
+  done
+  command -v salt-ssh 2>/dev/null || true
+}
+
+# ---------- CSV header normalization / fix ----------
+expected_header_raw='pod,platform,host,port,user,auth,sudo,python2_bin,ssh_args,minion_id,groups,notes'
+normalize_header(){
+  # $1: line (may include CR / quotes / mixed case)
+  local line="$1" BOM=$'\357\273\277'
+  line="${line#$BOM}"; line="${line//$'\r'/}"
+  line="${line//\"/}"
+  line="$(printf '%s' "$line" | tr '[:upper:]' '[:lower:]')"
+  line="${line//-/_}"
+  line="${line//[[:space:]]/}"
+  printf '%s' "$line"
+}
+header_ok(){
+  [ -f "$CSV_PATH" ] || return 1
+  local first; first="$(head -n1 "$CSV_PATH" 2>/dev/null || true)"
+  [ -n "$first" ] || return 1
+  [ "$(normalize_header "$first")" = "$expected_header_raw" ]
+}
+fix_csv_header_in_place(){
+  [ -f "$CSV_PATH" ] || return 1
+  local bom_has=0 eol_crlf=0
+  local BOM3; BOM3="$(head -c 3 "$CSV_PATH" 2>/dev/null || true)"
+  if [ "$BOM3" = $'\357\273\277' ]; then bom_has=1; fi
+  local header1; header1="$(head -n1 "$CSV_PATH" 2>/dev/null || true)"
+  case "$header1" in *$'\r') eol_crlf=1 ;; esac
+
+  local tmp="${CSV_PATH}.tmp.$$"
+  {
+    if [ $bom_has -eq 1 ]; then printf '%b' "$BOM3"; fi
+    printf '%s' "$expected_header_raw"
+    if [ $eol_crlf -eq 1 ]; then printf '\r\n'; else printf '\n'; fi
+    tail -n +2 "$CSV_PATH"
+  } > "$tmp"
+
+  local mode; mode="$(stat -c '%a' "$CSV_PATH" 2>/dev/null || echo '')"
+  mv -f "$tmp" "$CSV_PATH"
+  [ -n "$mode" ] && chmod "$mode" "$CSV_PATH" 2>/dev/null || true
+  return 0
+}
+
+# ---------- CSV robust row parser ----------
+SEP=$'\037'  # US separator
+parse_csv_line(){
+  # $1 line -> echo fields joined by $SEP
+  awk -v S="$1" -v SEP="$SEP" '
+  function emit(f) { if (out != "") out = out SEP; out = out f; }
+  BEGIN{
+    s=S; inq=0; f=""; out="";
+    len=length(s);
+    for (i=1; i<=len; i++) {
+      c=substr(s,i,1);
+      if (inq) {
+        if (c=="\"") {
+          if (i<len && substr(s,i+1,1)=="\"") { f=f "\""; i++; }
+          else { inq=0; }
+        } else { f=f c; }
+      } else {
+        if (c=="\"") { inq=1; }
+        else if (c==",") { emit(f); f=""; }
+        else { f=f c; }
+      }
+    }
+    emit(f);
+    print out;
+  }'
+}
+csv_row_read(){
+  local idx="$1" line joined
+  line="$(tail -n +2 "$CSV_PATH" 2>/dev/null | sed '/^[[:space:]]*$/d' | sed -n "${idx}p" || true)" || true
+  [ -n "$line" ] || return 1
+  line="${line%$'\r'}"
+  joined="$(parse_csv_line "$line")"
+  IFS="$SEP" read -r pod platform host port user auth sudo py2 ssh_args minion groups notes <<<"$joined"
+  CSV_POD="${pod:-}"; CSV_PLATFORM="${platform:-}"; CSV_HOST="${host:-}"
+  CSV_PORT="${port:-}"; CSV_USER="${user:-}"; CSV_AUTH="${auth:-}"
+  CSV_SUDO="${sudo:-}"; CSV_PY2="${py2:-}"; CSV_SSH_ARGS="${ssh_args:-}"
+  CSV_MINION="${minion:-}"; CSV_GROUPS="${groups:-}"; CSV_NOTES="${notes:-}"
+  return 0
+}
+csv_count_rows(){ tail -n +2 "$CSV_PATH" 2>/dev/null | sed '/^[[:space:]]*$/d' | wc -l | awk '{print $1}'; }
+
+# ---------- Main ----------
+ui_title
+ui_section "Remote Test"
+ui_kv "Project Root" "$PROJECT_ROOT"
+
+# Decide CSV or manual
+if [ "${TARGETS_FROM_CSV:-0}" -eq 1 ]; then
+  use_csv=1
+else
+  if ask_yn "Load target from CSV?" "$ASK_FROM_CSV_DEFAULT"; then use_csv=1; else use_csv=0; fi
 fi
 
-# ---------- Final status ----------
-if [ $TP_RC -eq 0 ] && [ $GR_RC -eq 0 ]; then
+target_host=""; target_user="$DEFAULT_USER"; target_port="$DEFAULT_PORT"
+target_platform="$DEFAULT_PLATFORM"; target_minion_id=""
+target_sudo="n"; target_auth="askpass"; target_notes=""
+
+if [ "$use_csv" -eq 1 ]; then
+  if ! header_ok; then
+    ui_warn "CSV header mismatch detected."
+    if [ "$FIX_CSV_HEADER_FLAG" -eq 1 ] || ask_yn "Fix CSV header in place now?" "y"; then
+      if fix_csv_header_in_place && header_ok; then
+        ui_ok "CSV header fixed."
+      else
+        ui_err "CSV header could not be fixed automatically."
+        exit 2
+      fi
+    else
+      ui_err "CSV header mismatch or file missing. Run module 02 to normalize."
+      exit 2
+    fi
+  fi
+
+  count="$(csv_count_rows)"
+  if [ "$count" -lt 1 ]; then ui_err "CSV has no data rows."; exit 2; fi
+
+  echo "Select a target from CSV:"
+  printf '%s\n' "  Id  Platform  Host                      User   Port  Sudo  MinionId"
+  printf '%s\n' "  --  --------  ------------------------  -----  ----  ----  ----------------"
+  i=1
+  while [ $i -le "$count" ]; do
+    csv_row_read "$i" || { i=$((i+1)); continue; }
+    printf '  %-2s  %-8s  %-24s  %-5s  %-4s  %-4s  %s\n' \
+      "$i" "${CSV_PLATFORM}" "${CSV_HOST}" "${CSV_USER}" "${CSV_PORT}" "${CSV_SUDO}" "${CSV_MINION}"
+    i=$((i+1))
+  done
+  idx="$(ask_line "Enter index" "")"
+  [ -z "$idx" ] && { ui_err "No selection."; exit 2; }
+  csv_row_read "$idx" || { ui_err "Invalid selection."; exit 2; }
+
+  target_host="$CSV_HOST"; target_user="$CSV_USER"; target_port="${CSV_PORT:-$DEFAULT_PORT}"
+  target_platform="$CSV_PLATFORM"; target_minion_id="${CSV_MINION:-$CSV_HOST}"
+  target_sudo="$CSV_SUDO"; target_auth="$CSV_AUTH"; target_notes="$CSV_NOTES"
+else
+  target_host="$(ask_line "Target host/IP" "")"
+  target_user="$(ask_line "SSH username" "$DEFAULT_USER")"
+  target_port="$(ask_line "SSH port" "$DEFAULT_PORT")"
+  target_platform="$DEFAULT_PLATFORM"
+  target_minion_id="$target_host"
+  target_sudo="n"
+  target_auth="askpass"
+fi
+
+# Cleanup decision
+cleanup="on"
+if [ -n "$CLEANUP_CHOICE" ]; then
+  case "$CLEANUP_CHOICE" in on|ON|On) cleanup="on" ;; off|OFF|Off) cleanup="off" ;; esac
+else
+  if ask_yn "Force cleanup of remote thin (recommended)?" "$CLEANUP_DEFAULT"; then cleanup="on"; else cleanup="off"; fi
+fi
+
+# Build temp roster for this single run
+ts="$(date +%Y%m%d-%H%M%S).$$.$RANDOM"
+ROSTER_FILE="${TMP_DIR}/remote-test.${ts}.roster.yaml"
+{
+  echo "${target_minion_id}:"
+  echo "  host: ${target_host}"
+  echo "  user: ${target_user}"
+  echo "  port: ${target_port}"
+  if [ "$target_sudo" = "y" ] || [ "$target_sudo" = "Y" ]; then
+    echo "  sudo: True"
+    echo "  tty: True"
+  else
+    echo "  sudo: False"
+    echo "  tty: False"
+  fi
+} > "$ROSTER_FILE"
+chmod 600 "$ROSTER_FILE" 2>/dev/null || true
+
+# Wrapper pick & logging
+pick_wrapper(){
+  local p
+  for p in $PREF_WRAPPERS; do
+    if [ -x "${PROJECT_ROOT}/bin/salt-ssh-${p}" ]; then echo "${PROJECT_ROOT}/bin/salt-ssh-${p}"; return 0; fi
+  done
+  for p in el8 el9 el7; do
+    if [ -x "${PROJECT_ROOT}/vendor/${p}/salt/salt-ssh" ]; then echo "${PROJECT_ROOT}/vendor/${p}/salt/salt-ssh"; return 0; fi
+  done
+  command -v salt-ssh 2>/dev/null || true
+}
+WRAPPER="$(pick_wrapper)"
+[ -n "${WRAPPER:-}" ] || { ui_err "salt-ssh wrapper not found (bin/salt-ssh-el7|el8|el9)."; exit 2; }
+SSH_LOG="${LOGS_DIR}/ssh-$(date +%Y%m%d-%H%M%S).log"
+
+# Auth flags
+ASKPASS_FLAG=()
+case "$target_auth" in
+  askpass|password|passwd|pass) ASKPASS_FLAG=( --askpass ) ;;
+  *) ASKPASS_FLAG=() ;;
+esac
+
+# Cleanup handling for wrappers vs direct salt-ssh
+IS_WRAPPER=0
+case "$WRAPPER" in */bin/salt-ssh-*) IS_WRAPPER=1 ;; esac
+COMMON_ARGS=( --config-dir "$CONF_DIR" --roster-file "$ROSTER_FILE" )
+EXTRA_CLEANUP_ARGS=()
+if [ $IS_WRAPPER -eq 0 ] && [ "$cleanup" = "on" ]; then EXTRA_CLEANUP_ARGS=( -W -w ); fi
+if [ $IS_WRAPPER -eq 1 ]; then
+  if [ "$cleanup" = "on" ]; then export SALT_SSH_CLEANUP=1; else export SALT_SSH_CLEANUP=0; fi
+fi
+
+ui_kv "Wrapper" "$(basename "$WRAPPER")"
+ui_kv "Platform" "$target_platform"
+ui_kv "Target"   "${target_user}@${target_host}:${target_port}"
+ui_kv "Sudo/TTY" "$( [ "$target_sudo" = "y" ] || [ "$target_sudo" = "Y" ] && echo true/true || echo false/false )"
+ui_kv "Cleanup"  "$cleanup"
+ui_kv "Roster"   "$ROSTER_FILE"
+ui_kv "SSH Log"  "$SSH_LOG"
+ui_hr
+
+# --- test.ping ---
+printf '%b' "• test.ping ... "
+set +e
+"$WRAPPER" "${COMMON_ARGS[@]}" "${EXTRA_CLEANUP_ARGS[@]}" \
+  "${ASKPASS_FLAG[@]}" -l quiet "$target_minion_id" test.ping 2>&1 | tee "$SSH_LOG"
+rc1=${PIPESTATUS[0]}
+set -e
+if [ $rc1 -eq 0 ]; then echo -e "${ICON_OK} test.ping"; else echo -e "${ICON_ERR} test.ping"; fi
+
+# --- grains.item osfinger pythonversion ---
+printf '%b' "• grains.item osfinger pythonversion ... "
+set +e
+"$WRAPPER" "${COMMON_ARGS[@]}" "${EXTRA_CLEANUP_ARGS[@]}" \
+  "${ASKPASS_FLAG[@]}" -l quiet "$target_minion_id" grains.item osfinger pythonversion 2>&1 | tee -a "$SSH_LOG"
+rc2=${PIPESTATUS[0]}
+set -e
+if [ $rc2 -eq 0 ]; then echo -e "${ICON_OK} grains.item"; else echo -e "${ICON_ERR} grains.item"; fi
+
+ok=0
+if [ $rc1 -eq 0 ] && [ $rc2 -eq 0 ]; then ok=1; fi
+
+if [ $ok -eq 1 ]; then
   ui_ok "Remote test PASSED"
-  ui_hr; printf '%b\n' "${C_BOLD}${C_GRN}✓ Done${C_RESET}"; ui_hr
-  exit 0
+  ui_hr; printf '%b\n' "${C_BOLD}${C_GRN}✓ Done${C_RESET}"; ui_hr; exit 0
+else
+  ui_warn "Remote test FAILED"
+  echo "Hints"
+  echo "  - Run module 02 if header mismatch persists."
+  echo "  - Verify credentials and password auth on server."
+  echo "  - EL7: ensure remote python exists (/usr/bin/python)."
+  echo "  - Sudo requires TTY and password; we set both when enabled."
+  echo "  - Check ${SSH_LOG} for full trace."
+  ui_hr; exit 2
 fi
-
-ui_err "Remote test FAILED"
-ui_section "Hints"
-echo "  - Check ${LOG_RUN_FILE} for full trace."
-echo "  - Verify password and server PasswordAuthentication policy."
-echo "  - EL7: ensure remote python exists (${PY2_BIN})."
-echo "  - You can force the local vendor via on-screen prompt or --force-vendor."
-ui_hr
-printf '%b\n' "${C_BOLD}${C_RED}✗ Module 07 - remote-test execution failed${C_RESET}"
-ui_hr
-[ $TP_RC -ne 0 ] && exit 2 || exit 3
 
