@@ -66,3 +66,8 @@ pillar/data.sls
 conf/*.bak*
 file-roots/*.bak*
 pillar/*.bak*
+# SALT SHAKER: roster CSVs (sensitive)
+roster/data/*
+!roster/data/.gitkeep
+!roster/data/README.md
+!roster/data/hosts-all-pods-example.csv
