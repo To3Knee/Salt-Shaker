@@ -5,7 +5,7 @@
        width="200"/>
 
 
-# 🧂 Salt Shaker — Portable Salt-SSH for Air-Gapped EL7/8/9
+# 🧂 Salt Shaker — Portable Salt-SSH 🧂
 
 ## ❌This is Just an idea and at this point 100% not functional (yet) - You have been warned❌
 
