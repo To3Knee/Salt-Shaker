@@ -1,4 +1,4 @@
-````markdown
+
 <p align="center">
   <img src="https://github.com/To3Knee/Salt-Shaker/blob/main/info/logo.png" 
        alt="Salt Shaker" 
