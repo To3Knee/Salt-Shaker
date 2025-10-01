@@ -55,3 +55,14 @@ github/.ssh/*
 pillar/data.sls
 pillar/private/**
 pillar/*.local.sls
+# SALT SHAKER: never commit runtime/secret artifacts
+etc/
+var/
+.cache/
+tmp/
+logs/
+roster/roster.yaml
+pillar/data.sls
+conf/*.bak*
+file-roots/*.bak*
+pillar/*.bak*
