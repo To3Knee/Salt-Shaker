@@ -50,3 +50,8 @@ archive/
 bin/*.bak
 github/.ssh/
 github/.ssh/*
+
+# Pillar secrets (local only; never push)
+pillar/data.sls
+pillar/private/**
+pillar/*.local.sls
