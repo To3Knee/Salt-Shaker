@@ -1,10 +1,11 @@
-```markdown
 <p align="center">
   <img src="https://raw.githubusercontent.com/To3Knee/Salt-Shaker/main/salt-shaker/assets/shlogo.jpg"
        alt="Salt Shaker" width="200"/>
 </p>
 
 # 🧂 Salt Shaker — Portable Salt-SSH for Air-Gapped EL7/8/9
+
+## ❌This is Just an idea and at this point 100% not functional (yet) - You have been warned❌
 
 [![Linux](https://img.shields.io/badge/platform-Linux-blue?logo=linux&logoColor=white)](#)
 [![Bash](https://img.shields.io/badge/shell-bash-green?logo=gnu-bash&logoColor=white)](#)
@@ -179,33 +180,6 @@ Module **05** will list any missing ones as a one-liner (e.g., “missing: futur
 
 ---
 
-## 🌐 GitHub (developer helpers)
-
-> These scripts live in `github/` and should not be shipped to air-gapped targets.
-
-Common flow:
-
-```bash
-github/setup-git-ssh.sh --print-config     # create key/config; show settings
-github/init-repo.sh                        # set remote + first push (no message)
-github/push.sh "optional message"          # subsequent quick pushes
-github/status.sh                           # branch/remote/last commits + SSH check
-github/wipe-remote-repo.sh                 # dry-run / soft / hard wipe (with prompts)
-```
-
-Recommended `.gitignore` entries:
-
-```
-logs/
-tmp/
-archive/
-.cache/
-bin/*.bak
-github/.ssh/
-```
-
----
-
 ## 🧹 Cleanup between iterations
 
 ```bash
@@ -238,10 +212,6 @@ github/.ssh/
 
   ```
   --ssh-args "-oPreferredAuthentications=password -oPubkeyAuthentication=no"
-  ```
-
-  and ensure TTY/sudo prompts match target policy.
-* **GitHub push rejected for secrets** → ensure `github/.ssh/` is ignored; use `github/status.sh` and `github/wipe-remote-repo.sh` responsibly.
 
 ---
 
@@ -249,6 +219,4 @@ github/.ssh/
 
 Huge thanks to everyone testing across EL7/8/9 and helping make this rock-solid in air-gapped environments.
 
-```
-::contentReference[oaicite:0]{index=0}
 ```
