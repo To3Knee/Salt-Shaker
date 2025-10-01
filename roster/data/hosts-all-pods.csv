@@ -1,14 +1,3 @@
-# Salt-SSH Roster CSV Template
-# Edit this file to add your hosts and credentials.
-# Fields: pod,target,host,ip,port,user,passwd,sudo,ssh_args,description
-# Notes:
-# - Use commas to separate fields.
-# - Replace placeholders (e.g., <YOUR_PASSWORD>) with actual values.
-# - For Excel: Open with comma delimiter and UTF-8 encoding.
-# - For Linux: Edit with vi, nano, or any text editor.
-# - Avoid commas in field values to prevent parsing issues.
-pod,target,host,ip,port,user,passwd,sudo,ssh_args,description
-test,saltclient,salt-client.saltclient.poisonpacket.lan,192.168.1.48,22,tony,Punk69!,TRUE,-o StrictHostKeyChecking=no,EL7 Salt test VM
-
-
-# EOF - Edit this file to add your actual hosts and credentials
+﻿pod,platform,host,port,user,auth,sudo,python2_bin,ssh_args,minion_id,groups,notes
+pod-01,el7,el7-host,22,root,askpass,y,/usr/bin/python,,"minion-el7-01","linux,legacy","example el7 target"
+pod-01,el8,el8-host,22,root,askpass,y,,,"minion-el8-01","linux","example el8 target"
