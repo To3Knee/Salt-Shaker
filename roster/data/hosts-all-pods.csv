@@ -1,3 +1,3 @@
 ﻿pod,platform,host,port,user,auth,sudo,python2_bin,ssh_args,minion_id,groups,notes
-pod-01,el7,el7-host,22,root,askpass,y,/usr/bin/python,,"minion-el7-01","linux,legacy","example el7 target"
-pod-01,el8,el8-host,22,root,askpass,y,,,"minion-el8-01","linux","example el8 target"
+salt-client,el7,192.168.1.48,22,tony,askpass,y,/usr/bin/python,,"minion-el7-01","linux,legacy","Salt Shaker EL7 Test Client"
+salt-client,el8,192.168.1.48,22,tony,askpass,y,,,"minion-el8-01","linux","Salt Shaker EL8 Test Client"

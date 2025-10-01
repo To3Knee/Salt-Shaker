@@ -1,240 +1,389 @@
 #!/bin/bash
 #===============================================================
 #Script Name: 07-remote-test.sh
-#Date: 09/29/2025
+#Date: 10/01/2025
 #Created By: T03KNEE
 #Github: https://github.com/To3Knee/Salt-Shaker
-#Version: 1.2
-#Short: Wizard/CLI remote smoke test via salt-ssh
-#About: Builds a temp config & roster, auto-picks controller wrapper,
-#About: wires EL7-friendly options (ssh_ext_alternatives 2019.2.3,
-#About: python2-bin), uses project .cache, and runs test.ping and
-#About: grains.item osfinger pythonversion. EL7-safe Bash.
+#Version: 1.8
+#Short: Salt-SSH remote connectivity smoke test (CSV + vendor override)
+#About: Lets you choose a target from roster/data/hosts-all-pods.csv or enter it
+#       manually. On-screen option to force the local vendor tree (el7/el8/el9)
+#       used for salt-ssh regardless of target platform. After run, warns if the
+#       declared platform (CSV/manual) mismatches the remote osmajorrelease.
+#       Uses password-only SSH, disables host-key writes, and forces a fresh
+#       Salt Thin (-W -w -t). All artifacts remain in the project folder.
 #===============================================================
 
-set -e -o pipefail
-LC_ALL=C
+umask 077
 
-# Colors
-if [ -t 1 ]; then G='\033[1;32m'; Y='\033[1;33m'; R='\033[1;31m'; C='\033[0;36m'; N='\033[0m'; else G="";Y="";R="";C="";N=""; fi
-ok(){ printf -- "%b✓ %s%b\n" "$G" "$*" "$N"; }
-warn(){ printf -- "%b⚠ %s%b\n" "$Y" "$*" "$N"; }
-err(){ printf -- "%b✖ %s%b\n" "$R" "$*" "$N"; }
-info(){ printf -- "%b%s%b\n" "$C" "$*" "$N"; }
-bar(){ printf -- "%b%s%b\n" "$C" "══════════════════════════════════════════════════════════════════════" "$N"; }
+# ---------- Colors / UI ----------
+if [ -t 1 ] && [ -z "$NO_COLOR" ]; then
+  C_RESET="\033[0m"; C_BOLD="\033[1m"
+  C_RED="\033[31m"; C_GRN="\033[32m"; C_YLW="\033[33m"; C_BLU="\033[34m"; C_CYN="\033[36m"; C_MAG="\033[35m"
+else
+  C_RESET=""; C_BOLD=""; C_RED=""; C_GRN=""; C_YLW=""; C_BLU=""; C_CYN=""; C_MAG=""
+fi
+ICON_OK="${C_GRN}✓${C_RESET}"
+ICON_WARN="${C_YLW}!${C_RESET}"
+ICON_ERR="${C_RED}✖${C_RESET}"
+ui_hr()      { printf '%b\n' "${C_CYN}──────────────────────────────────────────────────────────────${C_RESET}"; }
+ui_title()   { ui_hr; printf '%b\n' "${C_BOLD}${C_GRN}SALT SHAKER${C_RESET} ${C_CYN}|${C_RESET} ${C_BOLD}Module 07 · Remote Test${C_RESET}"; ui_hr; }
+ui_section() { printf '%b\n' "${C_BOLD}${1}${C_RESET}"; }
+ui_kv()      { printf '%b\n' "  ${C_BOLD}$1${C_RESET}: $2"; }
+ui_ok()      { printf '%b\n' "  ${ICON_OK} $1"; }
+ui_warn()    { printf '%b\n' "  ${ICON_WARN} $1"; }
+ui_err()     { printf '%b\n' "  ${ICON_ERR} $1"; }
 
-# Root detection
-RESOLVE_ABS(){ local p="$1"; if command -v readlink >/dev/null 2>&1 && readlink -f / >/dev/null 2>&1; then readlink -f -- "$p" 2>/dev/null || ( cd "$(dirname -- "$p")" && printf -- "%s/%s" "$(pwd)" "$(basename -- "$p")" ); else ( cd "$(dirname -- "$p")" && printf -- "%s/%s" "$(pwd)" "$(basename -- "$p")" ); fi; }
-FIND_ROOT_UP(){ local d="$1" i=8; while [ "$i" -gt 0 ] && [ -n "$d" ] && [ "$d" != "/" ]; do if [ -d "$d/vendor" ] || [ -d "$d/modules" ] || [ -f "$d/salt-shaker.sh" ] || [ -f "$d/salt-shaker-el7.sh" ]; then echo "$d"; return 0; fi; d="$(dirname -- "$d")"; i=$((i-1)); done; return 1; }
-SCRIPT_ABS="$(RESOLVE_ABS "$0")"; SCRIPT_DIR="$(dirname -- "$SCRIPT_ABS")"
-if [ -n "${SALT_SHAKER_ROOT:-}" ] && [ -d "${SALT_SHAKER_ROOT}" ]; then PROJECT_ROOT="$(RESOLVE_ABS "$SALT_SHAKER_ROOT")"; else PROJECT_ROOT="$(FIND_ROOT_UP "$SCRIPT_DIR" || true)"; [ -z "$PROJECT_ROOT" ] && PROJECT_ROOT="$(FIND_ROOT_UP "$(pwd)" || true)"; [ -z "$PROJECT_ROOT" ] && PROJECT_ROOT="$(RESOLVE_ABS "$(pwd)")"; fi
-short(){ printf -- "%s" "$1" | sed "s#^${PROJECT_ROOT}/##"; }
+# ---------- Module constants ----------
+MODULE_NAME="07-remote-test.sh"
+CANON_HEADER='pod,platform,host,port,user,auth,sudo,python2_bin,ssh_args,minion_id,groups,notes'
 
-LOG_DIR="${PROJECT_ROOT}/logs"; mkdir -p "$LOG_DIR" 2>/dev/null || true
-MAIN_LOG="${LOG_DIR}/salt-shaker.log"; ERROR_LOG="${LOG_DIR}/salt-shaker-errors.log"
-BIN_DIR="${PROJECT_ROOT}/bin"
-CACHE_DIR="${PROJECT_ROOT}/.cache/salt-ssh"
-mkdir -p "$CACHE_DIR" 2>/dev/null || true
+# ---------- Defaults / CLI ----------
+PLATFORM="el7"          # target platform label (CSV/manual)
+HOST=""
+USER="root"
+PORT="22"
+USE_SUDO="n"
+LOG_LEVEL="info"
+PY2_BIN="/usr/bin/python"
+MINION_ID=""
+PROJECT_ROOT=""
+CSV_PICK=0
+CSV_PATH=""
+CSV_INDEX=""
+NON_INTERACTIVE=0
+FORCE_VENDOR=""         # optional override: el7|el8|el9
+START_TS=$(date +%s)
+RUN_TS=$(date +%Y%m%d-%H%M%S)
 
-logi(){ printf -- "[%s] [INFO] %s\n" "$(date +'%F %T')" "$*" >>"$MAIN_LOG" 2>/dev/null || true; }
-loge(){ printf -- "[%s] [ERROR] %s\n" "$(date +'%F %T')" "$*" | tee -a "$ERROR_LOG" >>"$MAIN_LOG" 2>/dev/null || true; }
+# Salt-SSH hardening flags:
+SSH_FLAGS_COMMON="--no-host-keys --identities-only"
+THIN_FLAGS="-W -w -t"   # rand-thin-dir + wipe + regen-thin
 
-# Defaults
-PLAT=""; HOST=""; USER="root"; PORT="22"; SUDO=0; ASKPASS=0; SSHARGS=""; VERBOSE=0
-TIMEOUT="30"; PY3_BIN="/usr/bin/python3"; PY2_BIN="/usr/bin/python"
-FUNC1="test.ping"; FUNC2="grains.item osfinger pythonversion"
-FORCE_WRAPPER=""
-NONINTERACTIVE=0
+# ---------- Logging (project-only) ----------
+stamp() { date '+%Y-%m-%d %H:%M:%S'; }
+LOG_FILE=""
+TMP_ROSTER=""
+GR_TMP=""
+log_init_done=0
+log_init() {
+  [ $log_init_done -eq 1 ] && return 0
+  [ -z "$PROJECT_ROOT" ] && PROJECT_ROOT="$(pwd)"
+  mkdir -p "${PROJECT_ROOT}/logs" 2>/dev/null
+  chmod 700 "${PROJECT_ROOT}/logs" 2>/dev/null
+  LOG_FILE="${PROJECT_ROOT}/logs/salt-shaker.log"
+  log_init_done=1
+}
+log()  { log_init; printf '%s [%s] (%s) %s\n' "$(stamp)" "$1" "$MODULE_NAME" "$2" | tee -a "$LOG_FILE" >/dev/null; }
+info() { log "INFO"  "$1"; }
+warn() { log "WARN"  "$1"; }
+error(){ log "ERROR" "$1"; }
 
-usage(){
-cat <<EOF
-Usage: modules/07-remote-test.sh [options]
-  -t, --target {el7|el8|el9}   Target platform hint
-  -H, --host HOST              Target host/IP (accepts host:port)
-  -u, --user USER              SSH username (default: root)
-  -p, --port PORT              SSH port (default: 22)
-  --sudo                       Use sudo with tty
-  --ask-pass                   Add --askpass (password prompt by salt-ssh)
-  --ssh-args "OPTS"            Extra ssh options
-  --timeout SEC                Timeout (default: 30)
-  --python3-bin PATH           For el8/9 targets (default: /usr/bin/python3)
-  --python2-bin PATH           For el7 targets (default: /usr/bin/python)
-  -w, --wrapper NAME           Force wrapper (salt-ssh-el7|salt-ssh-el8)
-  -v, --verbose                Show command invoked
-  -y, --yes                    Non-interactive; use provided flags
-  -h, --help                   This help
-
-Wizard: If flags omitted, prompts for platform, host, username, and auth mode.
-EOF
+# ---------- Temp (project-only) ----------
+mk_local_tmpfile() {
+  mkdir -p "${PROJECT_ROOT}/tmp" 2>/dev/null
+  chmod 700 "${PROJECT_ROOT}/tmp" 2>/dev/null
+  local f="${PROJECT_ROOT}/tmp/remote-test.${RUN_TS}.$$.$RANDOM.roster.yaml"
+  : > "$f" || { error "Failed to create temp roster in project tmp"; exit 1; }
+  TMP_ROSTER="$f"
+  echo "$f"
+}
+mk_grains_tmpfile() {
+  mkdir -p "${PROJECT_ROOT}/tmp" 2>/dev/null
+  chmod 700 "${PROJECT_ROOT}/tmp" 2>/dev/null
+  local f="${PROJECT_ROOT}/tmp/remote-test.${RUN_TS}.$$.$RANDOM.grains.txt"
+  : > "$f" || { error "Failed to create grains temp file"; exit 1; }
+  GR_TMP="$f"
+  echo "$f"
 }
 
-# Parse CLI
+# ---------- TTY helpers ----------
+HAS_TTY=0
+open_tty() {
+  if [ -r /dev/tty ] && [ -w /dev/tty ] ; then exec 3<> /dev/tty; HAS_TTY=1; else HAS_TTY=0; fi
+}
+close_tty() { [ "$HAS_TTY" -eq 1 ] && exec 3<&- 3>&-; }
+prompt_tty() {
+  # $1 prompt, $2 default, $3 "req"
+  local p="$1"; local d="$2"; local req="$3"; local ans=""
+  if [ "$HAS_TTY" -eq 1 ] && [ $NON_INTERACTIVE -eq 0 ]; then
+    /bin/echo -en "${C_BOLD}${p}${C_RESET} [${d}]: " >&3
+    IFS= read -r ans <&3; [ -z "$ans" ] && ans="$d"
+  else
+    ans="$d"
+  fi
+  if [ -z "$ans" ] && [ "$req" = "req" ]; then ui_err "$p is required. Supply via CLI."; exit 2; fi
+  echo "$ans"
+}
+
+# ---------- CSV helpers (BOM-safe) ----------
+csv_list_rows() {
+  sed $'1s/^\xEF\xBB\xBF//' "$1" | awk -v max="$2" -v hdr="$CANON_HEADER" '
+    BEGIN{ FPAT="([^,]*)|(\"[^\"]*\")"; row=0; }
+    NR==1 { line=$0; sub(/\r$/,"",line); if(line!=hdr){ print "HEADER_MISMATCH"; exit 0 } next }
+    { n=NF; if(n<12) next
+      for(i=1;i<=12;i++){ gsub(/^[ \t]+|[ \t]+$/, "", $i); if($i ~ /^\".*\"$/){ sub(/^\"/,"",$i); sub(/\"$/,"",$i) } }
+      row++; if(row<=max){ printf("%d\t%s\t%s\t%s\t%s\t%s\t%s\n", row, $2, $3, $5, $4, $7, ($10==""?$3:$10)); }
+    }'
+}
+csv_get_row() {
+  sed $'1s/^\xEF\xBB\xBF//' "$1" | awk -v idx="$2" -v hdr="$CANON_HEADER" '
+    BEGIN{ FPAT="([^,]*)|(\"[^\"]*\")"; row=0; found=0 }
+    NR==1 { line=$0; sub(/\r$/,"",line); if(line!=hdr){ print "HEADER_MISMATCH"; exit 0 } next }
+    { n=NF; if(n<12) next
+      for(i=1;i<=12;i++){ gsub(/^[ \t]+|[ \t]+$/, "", $i); if($i ~ /^\".*\"$/){ sub(/^\"/,"",$i); sub(/\"$/,"",$i) } }
+      row++; if(row==idx){ for(i=1;i<=12;i++){ printf("%s%s",$i,(i<12?"\t":"\n")) } found=1; exit 0 }
+    }'
+}
+emit_ssh_options_from_args() {
+  RAW="$1"; [ -z "$RAW" ] && return 0
+  JUMP="$(printf '%s\n' "$RAW" | sed -n 's/.*-J[[:space:]]\+\([^[:space:]]\+\).*/\1/p' | head -n1)"
+  [ -n "$JUMP" ] && echo "    - ProxyJump ${JUMP}"
+  printf '%s\n' "$RAW" | tr ' ' '\n' | awk '/^-o/ { s=$0; sub(/^-o/,"",s); if(s!=""){ print "    - " s } }'
+}
+
+# ---------- Help / About ----------
+print_help() {
+  ui_title; ui_section "Usage"; echo "  $MODULE_NAME [options]"; echo
+  ui_section "Options"
+  echo "  -h, --help                Show help"
+  echo "  -a, --about               About module"
+  echo "  -d, --dir <path>          Project root override"
+  echo "  -p, --platform <elX>      Target platform label (el7|el8|el9) [el7]"
+  echo "  -t, --host <host/ip>      Target host or IP"
+  echo "  -u, --user <name>         SSH username [root]"
+  echo "  -P, --port <num>          SSH port [22]"
+  echo "  -S, --sudo <y|n>          Use sudo [n]"
+  echo "  -i, --id <minion_id>      Minion id (default: host)"
+  echo "  -L, --log-level <lvl>     info|debug [info]"
+  echo "      --python2-bin <p>     EL7 remote python path [/usr/bin/python]"
+  echo "      --non-interactive     No prompts; fail if missing args"
+  echo "      --targets-from-csv    Pick row from roster CSV (also auto-prompted)"
+  echo "      --csv <path>          CSV path (default: roster/data/hosts-all-pods.csv)"
+  echo "      --index <N>           CSV row index (1-based, excluding header)"
+  echo "      --force-vendor <elX>  Force local vendor used (el7|el8|el9)"
+  ui_hr
+}
+print_about() {
+  ui_title; ui_section "About"
+  echo "Portable salt-ssh smoke test. Choose from CSV or enter manually."
+  echo "You can also force which local vendor tree is used for salt-ssh."
+  ui_hr
+}
+
+# ---------- CLI parsing ----------
 while [ $# -gt 0 ]; do
   case "$1" in
-    -t|--target) shift; PLAT="$1";;
-    -H|--host) shift; HOST="$1";;
-    -u|--user) shift; USER="$1";;
-    -p|--port) shift; PORT="$1";;
-    --sudo) SUDO=1;;
-    --ask-pass) ASKPASS=1;;
-    --ssh-args) shift; SSHARGS="$1";;
-    --timeout) shift; TIMEOUT="$1";;
-    --python3-bin) shift; PY3_BIN="$1";;
-    --python2-bin) shift; PY2_BIN="$1";;
-    -w|--wrapper) shift; FORCE_WRAPPER="$1";;
-    -v|--verbose) VERBOSE=1;;
-    -y|--yes) NONINTERACTIVE=1;;
-    -h|--help) usage; exit 0;;
-  esac; shift || true
+    -h|--help) print_help; exit 0 ;;
+    -a|--about) print_about; exit 0 ;;
+    -d|--dir) shift; PROJECT_ROOT="$1" ;;
+    -p|--platform) shift; PLATFORM="$1" ;;
+    -t|--host) shift; HOST="$1" ;;
+    -u|--user) shift; USER="$1" ;;
+    -P|--port) shift; PORT="$1" ;;
+    -S|--sudo) shift; USE_SUDO="$1" ;;
+    -i|--id) shift; MINION_ID="$1" ;;
+    -L|--log-level) shift; LOG_LEVEL="$1" ;;
+    --python2-bin) shift; PY2_BIN="$1" ;;
+    --non-interactive) NON_INTERACTIVE=1 ;;
+    --targets-from-csv) CSV_PICK=1 ;;
+    --csv) shift; CSV_PATH="$1" ;;
+    --index) shift; CSV_INDEX="$1" ;;
+    --force-vendor) shift; FORCE_VENDOR="$1" ;;
+    *) warn "Unknown argument: $1"; print_help; exit 2 ;;
+  esac; shift
 done
 
-bar; info "▶ Remote Test"; info "Project Root : ${PROJECT_ROOT}"
+# ---------- Project root ----------
+if [ -z "$PROJECT_ROOT" ]; then
+  THIS_DIR="$(cd "$(dirname "$0")" 2>/dev/null && pwd)"
+  PARENT="$(cd "$THIS_DIR/.." 2>/dev/null && pwd)"
+  if [ -d "$PARENT/modules" ] && [ -d "$PARENT/offline" ]; then PROJECT_ROOT="$PARENT"; else PROJECT_ROOT="$(pwd)"; fi
+fi
+log_init; open_tty
 
-# --- Wizard with robust defaults & sanitization ---
-if [ "$NONINTERACTIVE" -eq 0 ]; then
-  # Platform (default el7 if blank)
-  printf -- "Target platform (el7/el8/el9) [el7]: "
-  read -r ans || true
-  [ -z "$ans" ] && ans="el7"
-  case "$ans" in
-    el7|EL7) PLAT="el7";;
-    el8|EL8) PLAT="el8";;
-    el9|EL9) PLAT="el9";;
-    *) warn "Invalid platform '$ans', using el7"; PLAT="el7";;
-  esac
+# ---------- Title ----------
+ui_title; ui_section "Remote Test"; printf "Project Root : %s\n" "$PROJECT_ROOT"
 
-  # Host/IP (sanitize control chars like ^H; allow host:port)
-  printf -- "Target host/IP: "
-  read -r raw || true
-  # strip non-printables
-  clean="$(printf "%s" "$raw" | tr -cd '[:print:]')"
-  # allow alnum, dot, dash, colon, underscore (underscore for some envs)
-  clean="$(printf "%s" "$clean" | sed 's/[^A-Za-z0-9._:-]//g')"
-  if [ -n "$raw" ] && [ "$clean" != "$raw" ]; then
-    warn "Sanitized host input: '$raw' → '$clean'"
-  fi
-  HOST="$clean"
-  # Extract :port if provided
-  if printf "%s" "$HOST" | grep -q ':'; then
-    hp_host="$(printf "%s" "$HOST" | cut -d: -f1)"
-    hp_port="$(printf "%s" "$HOST" | cut -d: -f2)"
-    if printf "%s" "$hp_port" | grep -Eq '^[0-9]+$'; then
-      HOST="$hp_host"; PORT="$hp_port"
-    fi
-  fi
-
-  # Username (default root)
-  printf -- "SSH username [root]: "
-  read -r ans || true
-  [ -n "$ans" ] && USER="$ans"
-
-  # Sudo prompt
-  printf -- "Use sudo? (y/N): "
-  read -r ans || true
-  case "${ans,,}" in y|yes) SUDO=1;; *) :;; esac
-
-  # Askpass prompt (default Yes)
-  printf -- "Password auth (--askpass)? (Y/n): "
-  read -r ans || true
-  case "${ans,,}" in n|no) ASKPASS=0;; *) ASKPASS=1;; esac
+# ---------- Offer CSV picker (interactive) ----------
+if [ $NON_INTERACTIVE -eq 0 ] && [ $CSV_PICK -eq 0 ] && [ "$HAS_TTY" -eq 1 ]; then
+  CHOICE="$(prompt_tty 'Load target from CSV? (Y/n)' 'Y')"
+  case "$CHOICE" in n|N) CSV_PICK=0 ;; *) CSV_PICK=1 ;; esac
 fi
 
-# Validate final inputs, set default platform if still blank
-[ -z "$PLAT" ] && PLAT="el7"
-case "$PLAT" in el7|el8|el9) : ;; *) err "Invalid --target '$PLAT'"; exit 1;; esac
-[ -z "$HOST" ] && { err "Missing --host"; exit 1; }
-
-# Pick wrapper (controller) — prefer el8, then el9, else el7; allow override; use el7 wrapper for el7 targets if present
-WRAPPER=""
-if [ -n "$FORCE_WRAPPER" ]; then
-  WRAPPER="$FORCE_WRAPPER"
-else
-  if [ "$PLAT" = "el7" ] && [ -x "${BIN_DIR}/salt-ssh-el7" ]; then WRAPPER="salt-ssh-el7"
-  elif [ -x "${BIN_DIR}/salt-ssh-el8" ]; then WRAPPER="salt-ssh-el8"
-  elif [ -x "${BIN_DIR}/salt-ssh-el9" ]; then WRAPPER="salt-ssh-el9"
-  else WRAPPER="salt-ssh-el7"
+# ---------- CSV selection ----------
+if [ $CSV_PICK -eq 1 ]; then
+  [ -n "$CSV_PATH" ] || CSV_PATH="${PROJECT_ROOT}/roster/data/hosts-all-pods.csv"
+  if [ ! -f "$CSV_PATH" ]; then ui_warn "CSV not found: $CSV_PATH — using manual prompts"; CSV_PICK=0; fi
+fi
+if [ $CSV_PICK -eq 1 ]; then
+  if [ -z "$CSV_INDEX" ] && [ "$HAS_TTY" -eq 1 ] && [ $NON_INTERACTIVE -eq 0 ]; then
+    /bin/echo -e "${C_BOLD}Select a target from CSV:${C_RESET}" >&3
+    LIST="$(csv_list_rows "$CSV_PATH" 50)"
+    if echo "$LIST" | head -n1 | grep -q '^HEADER_MISMATCH'; then ui_err "CSV header mismatch. Run module 02."; exit 2; fi
+    printf "%b\n" "  Id  Platform  Host               User   Port  Sudo  MinionId"
+    printf "%b\n" "  --  --------  -----------------  -----  ----  ----  --------"
+    echo "$LIST" | while IFS=$'\t' read -r idx plat host user port sudo mid; do
+      printf "  %-3s %-8s %-18s %-6s %-5s %-5s %s\n" "$idx" "$plat" "$host" "$user" "$port" "$sudo" "$mid"
+    done
+    CSV_INDEX="$(prompt_tty 'Enter index' '' 'req')"
   fi
-fi
-[ ! -x "${BIN_DIR}/${WRAPPER}" ] && { err "Wrapper not found: $(short "${BIN_DIR}/${WRAPPER}")"; exit 2; }
-
-info "Wrapper      : $(short "${BIN_DIR}/${WRAPPER}")"
-info "Platform     : ${PLAT}"
-info "Target       : ${USER}@${HOST}:${PORT}"
-info "Sudo/TTY     : $([ "$SUDO" -eq 1 ] && echo true || echo false)/true"
-
-# Temp conf + roster
-TS="$(date +%Y%m%d_%H%M%S)"
-CONF_TMP="${PROJECT_ROOT}/tmp/rt-${TS}"
-mkdir -p "${CONF_TMP}" "${PROJECT_ROOT}/roster" 2>/dev/null || true
-
-# Minimal persistent roster/hosts.yml if missing
-if [ ! -f "${PROJECT_ROOT}/roster/hosts.yml" ]; then
-  cat > "${PROJECT_ROOT}/roster/hosts.yml" <<'YAML'
-# roster/hosts.yml (auto-created)
-# Example host entry (edit and reuse for bulk runs)
-example:
-  host: 192.0.2.10
-  user: root
-  port: 22
-  sudo: False
-  tty: True
-YAML
-  ok "Created template: $(short "${PROJECT_ROOT}/roster/hosts.yml")"
+  ROW="$(csv_get_row "$CSV_PATH" "$CSV_INDEX")"
+  if printf '%s' "$ROW" | grep -q '^HEADER_MISMATCH'; then ui_err "CSV header mismatch. Run module 02."; exit 2; fi
+  [ -n "$ROW" ] || { ui_err "Index not found in CSV: $CSV_INDEX"; exit 2; }
+  POD="$(printf '%s' "$ROW" | awk -F'\t' '{print $1}')"
+  PLATFORM="$(printf '%s' "$ROW" | awk -F'\t' '{print $2}')"
+  HOST="$(printf '%s' "$ROW" | awk -F'\t' '{print $3}')"
+  PORT="$(printf '%s' "$ROW" | awk -F'\t' '{print $4}')"
+  USER="$(printf '%s' "$ROW" | awk -F'\t' '{print $5}')"
+  AUTHMODE="$(printf '%s' "$ROW" | awk -F'\t' '{print $6}')"
+  SUDOFLAG="$(printf '%s' "$ROW" | awk -F'\t' '{print $7}')"
+  PY2_BIN_CSV="$(printf '%s' "$ROW" | awk -F'\t' '{print $8}')"
+  SSH_ARGS_CSV="$(printf '%s' "$ROW" | awk -F'\t' '{print $9}')"
+  MINION_ID_CSV="$(printf '%s' "$ROW" | awk -F'\t' '{print $10}')"
+  [ -z "$PORT" ] && PORT="22"; [ -z "$USER" ] && USER="root"
+  if [ "$SUDOFLAG" = "y" ] || [ "$SUDOFLAG" = "Y" ]; then USE_SUDO="y"; else USE_SUDO="n"; fi
+  [ -n "$MINION_ID_CSV" ] && MINION_ID="$MINION_ID_CSV"
+  if [ "$PLATFORM" = "el7" ] && [ -n "$PY2_BIN_CSV" ]; then PY2_BIN="$PY2_BIN_CSV"; fi
 fi
 
-# Master config (controller)
-MASTER="${CONF_TMP}/master"
-mkdir -p "${CONF_TMP}" 2>/dev/null || true
+# ---------- Manual prompts ----------
+if [ $CSV_PICK -eq 0 ]; then
+  case "$PLATFORM" in el7|el8|el9) : ;; *) PLATFORM="$(prompt_tty 'Target platform (el7/el8/el9)' 'el7' 'req')";; esac
+  [ -n "$HOST" ] || HOST="$(prompt_tty 'Target host/IP' '' 'req')"
+  USER="$(prompt_tty 'SSH username' "$USER")"
+  PORT="$(prompt_tty 'SSH port' "$PORT")"
+  if [ "$USE_SUDO" != "y" ] && [ "$USE_SUDO" != "n" ]; then USE_SUDO="$(prompt_tty 'Use sudo? (y/N)' 'n')"; fi
+fi
+
+# ---------- On-screen vendor override ----------
+if [ $NON_INTERACTIVE -eq 0 ] && [ "$HAS_TTY" -eq 1 ] && [ -z "$FORCE_VENDOR" ]; then
+  VCHOICE="$(prompt_tty 'Force local vendor (n/el7/el8/el9)' 'n')"
+  case "$VCHOICE" in el7|el8|el9) FORCE_VENDOR="$VCHOICE" ;; *) FORCE_VENDOR="" ;; esac
+fi
+VENDOR_PLAT="${FORCE_VENDOR:-$PLATFORM}"
+
+# ---------- Resolve salt-ssh binary ----------
+VENDOR_DIR="${PROJECT_ROOT}/vendor/${VENDOR_PLAT}"
+SSSH_BIN="${VENDOR_DIR}/bin/salt-ssh"
+if [ ! -x "$SSSH_BIN" ] && [ -x "${PROJECT_ROOT}/bin/salt-ssh-${VENDOR_PLAT}" ]; then
+  SSSH_BIN="${PROJECT_ROOT}/bin/salt-ssh-${VENDOR_PLAT}"
+fi
+[ -x "$SSSH_BIN" ] || { ui_err "salt-ssh not found for local vendor ${VENDOR_PLAT}. Run module 04."; exit 2; }
+
+# ---------- Portable env ----------
+export PATH="${VENDOR_DIR}/bin:${PATH}"
+export PYTHONHOME="${VENDOR_DIR}"
+if [ -d "${VENDOR_DIR}/lib" ]; then export LD_LIBRARY_PATH="${VENDOR_DIR}/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"; fi
+
+# ---------- Compose flags ----------
+SUDO_FLAG=""; [ "$USE_SUDO" = "y" ] && SUDO_FLAG="--sudo"
+[ -z "$MINION_ID" ] && MINION_ID="$HOST"
+LOG_RUN_FILE="${PROJECT_ROOT}/logs/ssh-${RUN_TS}.log"
+
+# ---------- Build temp roster ----------
+TMP_ROSTER="$(mk_local_tmpfile)"
 {
-  echo "cachedir: ${CACHE_DIR}"
-  echo "ssh_config: True"
-  echo "roster: flat"
-  echo "roster_file: ${CONF_TMP}/roster"
-  echo "ssh_max_procs: 10"
-  echo "ssh_wipe: True"
-  echo "thin_dir: /tmp/.salt-thin"
-  if [ "$PLAT" = "el7" ]; then
-    echo "ssh_ext_alternatives: 2019.2.3"
-  fi
-} > "$MASTER"
-
-# Roster for this run
-ROSTER="${CONF_TMP}/roster"
-{
-  echo "target:"
+  echo "${MINION_ID}:"
   echo "  host: ${HOST}"
   echo "  user: ${USER}"
   echo "  port: ${PORT}"
-  echo "  tty: True"
-  echo "  sudo: $([ "$SUDO" -eq 1 ] && echo True || echo False)"
-} > "$ROSTER"
+  if [ "$USE_SUDO" = "y" ]; then echo "  sudo: True"; echo "  tty: True"; else echo "  sudo: False"; echo "  tty: False"; fi
+  echo "  ignore_host_keys: True"
+  echo "  ssh_options:"
+  echo "    - PreferredAuthentications=password"
+  echo "    - PasswordAuthentication=yes"
+  echo "    - PubkeyAuthentication=no"
+  echo "    - KbdInteractiveAuthentication=no"
+  echo "    - GSSAPIAuthentication=no"
+  echo "    - IdentitiesOnly=yes"
+  echo "    - NumberOfPasswordPrompts=1"
+  echo "    - StrictHostKeyChecking=no"
+  echo "    - UserKnownHostsFile=/dev/null"
+  if [ $CSV_PICK -eq 1 ] && [ -n "$SSH_ARGS_CSV" ]; then emit_ssh_options_from_args "$SSH_ARGS_CSV"; fi
+  if [ "$PLATFORM" = "el7" ]; then echo "  python2_bin: ${PY2_BIN}"; fi
+} >> "$TMP_ROSTER"
 
-# Build salt-ssh command
-CMD=("${BIN_DIR}/${WRAPPER}" "-c" "$CONF_TMP" "-i" "-t" "$TIMEOUT" "-w" "2" "target")
-[ "$ASKPASS" -eq 1 ] && CMD+=("--askpass")
-[ -n "$SSHARGS" ] && CMD+=("--ssh-option" "$SSHARGS")
-case "$PLAT" in
-  el7) CMD+=("--python2-bin" "$PY2_BIN");;
-  el8|el9) CMD+=("--python3-bin" "$PY3_BIN");;
-esac
+# ---------- Preflight ----------
+ui_kv "Wrapper"     "$(basename "$SSSH_BIN")"
+ui_kv "Platform"    "$PLATFORM"
+ui_kv "Vendor Local" "$VENDOR_PLAT"
+ui_kv "Target"      "${USER}@${HOST}:${PORT}"
+ui_kv "Sudo/TTY"    "$( [ "$USE_SUDO" = "y" ] && echo true || echo false )/$( [ "$USE_SUDO" = "y" ] && echo true || echo false )"
+ui_kv "Roster"      "$TMP_ROSTER"
+ui_kv "SSH Log"     "$LOG_RUN_FILE"
+ui_hr
 
-bar
-printf -- "• %s ... " "$FUNC1"
-if [ "$VERBOSE" -eq 1 ]; then echo; printf "  "; printf -- "%q " "${CMD[@]}" "$FUNC1"; echo; fi
-if "${CMD[@]}" "$FUNC1" >/dev/null 2>>"$ERROR_LOG"; then ok "$FUNC1"; T1=0; else err "$FUNC1"; T1=1; fi
+# ---------- Execute tests ----------
+printf '• test.ping ... '
+"$SSSH_BIN" \
+  $SSH_FLAGS_COMMON \
+  $THIN_FLAGS \
+  --roster=flat \
+  --roster-file "$TMP_ROSTER" \
+  --askpass \
+  $SUDO_FLAG \
+  -l "$LOG_LEVEL" \
+  --log-file "$LOG_RUN_FILE" \
+  "$MINION_ID" test.ping
+TP_RC=$?
+[ $TP_RC -eq 0 ] && printf '%b\n' "${ICON_OK} test.ping" || printf '%b\n' "${ICON_ERR} test.ping"
 
-printf -- "• %s ... " "$FUNC2"
-if [ "$VERBOSE" -eq 1 ]; then echo; printf "  "; printf -- "%q " "${CMD[@]}" $FUNC2; echo; fi
-if "${CMD[@]}" $FUNC2 >/dev/null 2>>"$ERROR_LOG"; then ok "$FUNC2"; T2=0; else warn "$FUNC2"; T2=1; fi
+# Capture grains for post-run analysis
+GR_TMP="$(mk_grains_tmpfile)"
+printf '• grains.item osfinger osmajorrelease pythonversion ... '
+"$SSSH_BIN" \
+  $SSH_FLAGS_COMMON \
+  $THIN_FLAGS \
+  --roster=flat \
+  --roster-file "$TMP_ROSTER" \
+  --askpass \
+  $SUDO_FLAG \
+  -l "$LOG_LEVEL" \
+  --log-file "$LOG_RUN_FILE" \
+  "$MINION_ID" grains.item osfinger osmajorrelease pythonversion | tee "$GR_TMP"
+GR_RC=${PIPESTATUS[0]}
+[ $GR_RC -eq 0 ] && printf '%b\n' "${ICON_OK} grains.item" || printf '%b\n' "${ICON_WARN} grains.item"
 
-if [ $T1 -eq 0 ] && [ $T2 -eq 0 ]; then
-  ok "Remote test PASSED"
-  exit 0
-elif [ $T1 -eq 0 ]; then
-  warn "Remote test PARTIAL (grains failed/warned)"
-  exit 1
-else
-  err "Remote test FAILED"
-  exit 2
+# ---------- Parse grains for mismatch warning ----------
+parse_grain_val() {
+  # $1 file, $2 key -> prints first scalar value following "key:"
+  awk -v key="$2" '
+    BEGIN{show=0}
+    { sub(/\r$/,"",$0) }
+    $1 ~ key":" { show=1; next }
+    show==1 && $0 ~ /^[[:space:]]*[^[:space:]]/ { s=$0; sub(/^[[:space:]]+/,"",s); print s; exit }
+  ' "$1"
+}
+REMOTE_OSFINGER="$(parse_grain_val "$GR_TMP" "osfinger")"
+REMOTE_OSMAJOR="$(parse_grain_val "$GR_TMP" "osmajorrelease")"
+# Fallback: derive major from osfinger if osmajorrelease empty
+if [ -z "$REMOTE_OSMAJOR" ] && [ -n "$REMOTE_OSFINGER" ]; then
+  REMOTE_OSMAJOR="$(printf '%s' "$REMOTE_OSFINGER" | grep -o '[0-9]\+' | head -n1)"
 fi
+# Expected major from declared platform
+case "$PLATFORM" in el7) EXPECT_MAJOR="7" ;; el8) EXPECT_MAJOR="8" ;; el9) EXPECT_MAJOR="9" ;; *) EXPECT_MAJOR="" ;; esac
+
+if [ -n "$EXPECT_MAJOR" ] && [ -n "$REMOTE_OSMAJOR" ] && [ "$EXPECT_MAJOR" != "$REMOTE_OSMAJOR" ]; then
+  ui_warn "Platform mismatch: declared ${PLATFORM} (expect ${EXPECT_MAJOR}) vs remote ${REMOTE_OSFINGER:-unknown} (major ${REMOTE_OSMAJOR})."
+  ui_warn "Local vendor used: ${VENDOR_PLAT}. If incorrect, rerun and force vendor accordingly."
+fi
+
+# ---------- Final status ----------
+if [ $TP_RC -eq 0 ] && [ $GR_RC -eq 0 ]; then
+  ui_ok "Remote test PASSED"
+  ui_hr; printf '%b\n' "${C_BOLD}${C_GRN}✓ Done${C_RESET}"; ui_hr
+  exit 0
+fi
+
+ui_err "Remote test FAILED"
+ui_section "Hints"
+echo "  - Check ${LOG_RUN_FILE} for full trace."
+echo "  - Verify password and server PasswordAuthentication policy."
+echo "  - EL7: ensure remote python exists (${PY2_BIN})."
+echo "  - You can force the local vendor via on-screen prompt or --force-vendor."
+ui_hr
+printf '%b\n' "${C_BOLD}${C_RED}✗ Module 07 - remote-test execution failed${C_RESET}"
+ui_hr
+[ $TP_RC -ne 0 ] && exit 2 || exit 3
 
