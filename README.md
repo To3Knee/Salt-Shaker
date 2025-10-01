@@ -240,3 +240,4 @@ Empties `vendor/*`, `tmp/*`, `.cache/*`, `logs/*` — preserves directories.
 
 * Maintainer: **To3Knee**
 * © 2025 Salt Shaker contributors 
+
