@@ -1,8 +1,9 @@
+````markdown
 <p align="center">
   <img src="https://github.com/To3Knee/Salt-Shaker/blob/main/info/logo.png" 
        alt="Salt Shaker" 
        width="200"/>
-</p>
+
 
 # 🧂 Salt Shaker — Portable Salt-SSH for Air-Gapped EL7/8/9
 
@@ -10,212 +11,232 @@
 
 [![Linux](https://img.shields.io/badge/platform-Linux-blue?logo=linux&logoColor=white)](#)
 [![Bash](https://img.shields.io/badge/shell-bash-green?logo=gnu-bash&logoColor=white)](#)
-[![Salt](https://img.shields.io/badge/SaltStack-portable-orange)](#)
+[![Salt](https://img.shields.io/badge/SaltStack-portable-orange?logo=saltproject&logoColor=white)](#)
 ![Air-Gapped](https://img.shields.io/badge/Air--Gapped-First-red)
-![EL7/8/9](https://img.shields.io/badge/RHEL/Rocky-7%2F8%2F9-yellow)
+![RHEL/Rocky](https://img.shields.io/badge/EL7%2F8%2F9-Supported-yellow)
 
-Salt Shaker is a **self-contained Salt-SSH toolkit** designed for **air-gapped** environments.  
-No system packages are installed; everything runs from the project folder.
+**Salt Shaker** is a 100% portable **Salt-SSH** toolkit for air-gapped **RHEL/CentOS/Rocky**.
+It never installs system packages on controllers or targets—everything runs from a self-contained project folder.
 
-- **EL8/EL9 controller**: “onedir” builds (bundled Python 3.10) — recommended.  
-- **EL7 targets**: Python 2 **thin** client (2019.2.x) shipped over SSH.  
-- **Clear, idempotent modules** with ✓/⚠/✖ output and detailed logs.  
-- **EL7-safe Bash** (works on EL7/EL8/EL9).
+- EL7 targets use a Python-2 **thin** (2019.2.x).
+- EL8/EL9 use **onedir** builds (bundled Python 3.10).
+- Clean logs, idempotent modules, friendly menus, and EL7-safe Bash.
 
 ---
 
-## 📦 What’s inside
+## 🚀 Menus (interactive)
 
-### Modules (`modules/`)
-1. **01-check-dirs.sh** — verify/create skeleton; `--fix`, `--fix-perms`, `--dry-run`.
-2. **02-create-csv.sh** — roster CSV template generator.
-3. **03-verify-packages.sh** — verify offline **RPMs/tarballs** (EL7/8/9) and thin extras/backports.
-4. **04-extract-binaries.sh** — unpack onedir tarballs + overlay RPMs → `vendor/elX/salt`.
-5. **05-build-thin-el7.sh** — build EL7 **thin** (2019.2.8) including optional backports (futures, backports_abc, singledispatch, enum34, certifi). Offers to install wrappers when done.
-6. **06-check-vendors.sh** — validates controller onedir + EL7 thin; relaxed checks; prints **READY ✓** summary.
-7. **07-remote-test.sh** — friendly wizard for salt-ssh ping & grains against a target; supports password auth, sudo/TTY toggles, custom ssh args.
+Salt Shaker ships with TUI-style launchers that wrap modules **01–07** with ✓/⚠/✖ feedback and logging.
 
-### Wrappers (`bin/`)
-- **salt-ssh-el7** — controller onedir + EL7 thin; legacy SSH options for “fossil” EL7 servers; `--print-env`.
-- **salt-ssh-el8**, **salt-call-el8** — onedir execution on EL8/EL9.
+**On EL8/EL9 controllers (recommended):**
+```bash
+./salt-shaker.sh
+````
+
+**On EL7 controllers (legacy/compatible):**
+
+```bash
+./salt-shaker-el7.sh
+```
+
+### EL8 / EL9 Menu Example
+
+```
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                     S A L T • S H A K E R v1.11                             ║
+║     Portable SaltStack Automation for Air-Gapped Environments               ║
+╠══════════════════════════════════════════════════════════════════════════════╣
+║ Project: /sto/salt-shaker │ OS: Rocky Linux release 8.10 │ Modules: 8       ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+┌─ Salt Shaker Menu ──────────────────────────────────────────────────────┐
+│
+│ 1. check-dirs           - Verify project directory skeleton
+│ 2. create-csv           - Create-csv module
+│ 3. verify-packages      - Verify Salt RPMs and onedir tarballs
+│ 4. extract-binaries     - Extract onedir + overlay RPMs to vendor
+│ 5. build-thin-el7       - Build EL7 Python2 salt-ssh thin (2019.2....)
+│ 6. check-vendors        - Check vendor onedirs (el7/el8/el9) + EL7...
+│ 7. remote-test          - Wizard/CLI remote smoke test via salt-ssh
+│ 8. generate-configs     - Generate sample Salt configurations
+│
+└─ Options: [Q]uit  [N]ext  [P]rev  [R]efresh  [H]elp
+   Page 0/1  (8 modules loaded)
+
+Select option (number/Q/N/P/R/H):
+```
+
+### EL7 Menu Example
+
+```
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                         S A L T • S H A K E R v8.10                          ║
+╠══════════════════════════════════════════════════════════════════════════════╣
+║          Portable SaltStack Automation for Air-Gapped Environments           ║
+║                      Rocky Linux 8.10 • Green Obsidian                       ║
+╠══════════════════════════════════════════════════════════════════════════════╣
+║   1)       check dirs                                                        ║
+║   2)       create csv                                                        ║
+║   3)       verify packages                                                   ║
+║   4)       extract binaries                                                  ║
+║   5)       build thin el7                                                    ║
+║   6)       check vendors                                                     ║
+║   7)       remote test                                                       ║
+║   8)       generate configs                                                  ║
+╠══════════════════════════════════════════════════════════════════════════════╣
+║  [1-8] Select • [N] Next • [P] Prev • [R] Refresh • [H] Help • [Q] Quit      ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+Select [1-8 / N / P / R / H / Q]:
+```
+
+Both menus:
+
+* auto-detect `PROJECT_ROOT` (no hardcoded paths),
+* show module descriptions before running,
+* keep all artifacts under the project tree,
+* return clear exit statuses and write to `logs/salt-shaker.log`.
+
+---
+
+## 📦 Modules
+
+* `01-check-dirs.sh` – verify/create project skeleton; `--fix`, `--dry-run`, `--fix-perms`
+* `02-create-csv.sh` – roster CSV template generator
+* `03-verify-packages.sh` – verify RPMs/tarballs for EL7/8/9 + thin extras/backports
+* `04-extract-binaries.sh` – extract onedir tarballs + overlay RPMs → `vendor/elX/salt`
+* `05-build-thin-el7.sh` – build **EL7 Py2 thin** (2019.2.x) with optional backports; offers wrapper install
+* `06-check-vendors.sh` – controller onedir + thin validation (relaxed, green “READY ✓”)
+* `07-remote-test.sh` – guided Salt-SSH ping/grains to a host (password or key auth)
+
+---
+
+## 🧰 Wrappers (`bin/`)
+
+* `salt-ssh-el7` – controller onedir + ships EL7 thin; legacy SSH tunings; `--print-env`
+* `salt-ssh-el8`, `salt-call-el8` – onedir execution for EL8/EL9
 
 All wrappers:
-- auto-detect project root,  
-- force `cachedir=$PROJECT_ROOT/.cache`,  
-- ensure minimal `roster/hosts.yml` and `conf/` exist,  
-- never hardcode absolute paths.
 
-> Install wrappers anytime via `env/90-install-env-wrappers.sh`
-> (also offered at the end of module **05**).
-
-### GitHub helpers (`github/`) — **dev convenience, excluded from air-gap**
-- **setup-git-ssh.sh** — create ed25519 key & SSH config; `--print-config`, `--regen-key`; optional connectivity test.  
-- **init-repo.sh** — set remote, first commit, and push. **No default commit message** (empty message OK).  
-- **push.sh** — add-all / commit (blank or custom message) / push.  
-- **status.sh** — show branch, remote, last commits + SSH check.  
-- **wipe-remote-repo.sh** — interactively **soft/hard** wipe the remote `main` (with confirmations).  
-- **download-salt-shaker.sh** — optional fetcher when bootstrapping elsewhere.  
-- **github-menu.sh** — small menu that ties the above together.
+* auto-create minimal `conf/`, `.cache/`, and `roster/hosts.yml`
+* force `cachedir=${PROJECT_ROOT}/.cache`
+* path-agnostic (no hardcoded roots)
+* optional `--print-env` for quick troubleshooting
 
 ---
 
-## 🌳 Project tree (at a glance)
+## 🌳 Project Tree
 
 ```
-
 salt-shaker/
-├─ salt-shaker.sh         salt-shaker-el7.sh
-├─ modules/01..07         bin/                  env/
-├─ offline/
-│  └─ salt/
-│     ├─ el7/ el8/ el9/   # RPMs
-│     ├─ tarballs/        # onedir tarballs (e.g., 3006.15, 3007.8)
-│     └─ thin/el7/        # EL7 thin deps + six/backports
-├─ vendor/
-│  ├─ el7/{salt,thin/}
-│  ├─ el8/salt
-│  └─ el9/salt
-├─ roster/                file-roots/          pillar/
-├─ logs/                  .cache/              tmp/
-├─ support/               scripts/             tools/   rpm/
-└─ github/                # dev-only helpers; not shipped to air-gap
+├── salt-shaker.sh         # EL8/EL9 menu
+├── salt-shaker-el7.sh     # EL7-compatible menu
+├── modules/01..07         # build/test modules
+├── bin/                   # wrappers
+├── offline/
+│   └── salt/
+│       ├── el7/ el8/ el9/     # RPMs
+│       ├── tarballs/          # onedir tarballs (3006/3007)
+│       └── thin/el7/          # EL7 thin deps + six (+ optional backports)
+├── vendor/
+│   ├── el7/{salt,thin/}
+│   ├── el8/salt
+│   └── el9/salt
+├── roster/ file-roots/ pillar/
+├── logs/ .cache/ tmp/
+├── support/ scripts/ tools/ rpm/
+└── github/                # dev helpers; excluded from air-gap builds
+```
 
-````
-
-All logs/cache/tmp/vendor live **inside** the project root.  
-`clean-house.sh` **empties** these directories without deleting them.
+All logs/cache/tmp/vendor live **inside** the project root.
+`clean-house.sh` empties those directories without deleting them.
 
 ---
 
-## ⚡ Quickstart
+## 🧭 Build Flow (short)
 
-### 0) (Optional) Create an empty skeleton anywhere
-```bash
-./setup.sh                      # asks destination, perms, creates tree
-````
+1. **Skeleton**
 
-### 1) Verify & create required directories
+   ```bash
+   ./setup.sh                 # optional (create empty tree anywhere)
+   ./modules/01-check-dirs.sh --fix
+   ```
 
-```bash
-./modules/01-check-dirs.sh --fix
-```
+2. **Stage artifacts under `offline/salt/…`**
 
-### 2) Stage offline artifacts
+   * Onedir tarballs: `salt-3006.15-onedir-…`, `salt-3007.8-onedir-…`
+   * RPMs for el7/el8/el9 (`salt`, `salt-ssh`, `salt-cloud`)
+   * EL7 thin deps in `offline/salt/thin/el7/` (core + optional backports)
 
-Place files under `offline/`:
+3. **Verify**
 
-* **Onedir tarballs** (EL8/EL9):
-  `offline/salt/tarballs/salt-3007.8-onedir-linux-x86_64.tar.xz`
-  *(and 3006.15 if desired)*
+   ```bash
+   ./modules/03-verify-packages.sh --summary
+   ```
 
-* **RPMs**:
-  `offline/salt/el8/` and `offline/salt/el9/` (salt, salt-ssh, salt-cloud)
+4. **Extract onedir**
 
-* **EL7 thin deps** in `offline/salt/thin/el7/` (core + backports; see “EL7 thin backports” below)
+   ```bash
+   ./modules/04-extract-binaries.sh
+   ```
 
-### 3) Verify packages/tarballs
+5. **Build EL7 thin**
 
-```bash
-./modules/03-verify-packages.sh --summary
-```
+   ```bash
+   ./modules/05-build-thin-el7.sh
+   # creates vendor/el7/thin/salt-thin.tgz and can auto-install wrappers
+   ```
 
-### 4) Extract controller onedir(s)
+6. **Check vendors**
 
-```bash
-./modules/04-extract-binaries.sh
-# → vendor/el8/salt and/or vendor/el9/salt
-```
+   ```bash
+   ./modules/06-check-vendors.sh
+   # shows green READY ✓; relaxed thin check (accepts salt/... or ./salt/…)
+   ```
 
-### 5) Build EL7 thin (Py2)
+7. **Remote test**
 
-```bash
-./modules/05-build-thin-el7.sh
-# Includes: salt,msgpack,yaml,tornado,six,jinja2,markupsafe,requests
-# Optional backports auto-detected: futures, backports_abc, singledispatch, enum34, certifi
-# Offers to install wrappers (recommended)
-```
-
-### 6) Sanity check vendors
-
-```bash
-./modules/06-check-vendors.sh
-# Prints a green READY ✓ summary. Relaxed thin validation (salt/... or ./salt/...).
-```
-
-### 7) Try a remote
-
-```bash
-./modules/07-remote-test.sh        # wizard prompts for platform, host, user
-# or non-interactive:
-./modules/07-remote-test.sh -t el8 -H 192.0.2.10 -u admin --ask-pass
-```
+   ```bash
+   ./modules/07-remote-test.sh
+   # wizard: target platform/host/user, --ask-pass if needed
+   ```
 
 ---
 
-## 📥 EL7 thin backports (recommended)
+## 🔐 SSH & Elevation
 
-Drop these in `offline/salt/thin/el7/` to maximize EL7 target compatibility:
-
-* `python2-futures-3.x-*.el7.noarch.rpm`
-* `python2-backports_abc-0.5-*.el7.noarch.rpm`
-* `python-singledispatch-3.4.0.*-*.el7.noarch.rpm`
-* `python-enum34-1.*-*.el7.noarch.rpm`
-* `python2-certifi-*.el7.noarch.rpm`
-
-Module **05** will list any missing ones as a one-liner (e.g., “missing: futures, …”).
+* Username/password (`--askpass`) and key auth supported.
+* `sudo` by default; non-sudo **“suroot”** environments can be shimmed (planned add-on).
+* Wrappers include legacy KEX/HostKey options for EL7 “fossil” SSH.
 
 ---
 
-## 🧰 Wrapper tips
-
-* `bin/salt-ssh-el7 --print-env` *(and `salt-ssh-el8`)* prints the resolved environment
-  (PATH, PYTHONHOME, onedir path, cachedir).
-* Wrappers auto-create:
-
-  * `roster/hosts.yml` (minimal template if missing),
-  * `conf/master` (temp), forcing:
-
-    * `cachedir: $PROJECT_ROOT/.cache`
-    * `ssh_wipe: True`
-    * **EL7** only: a default `ssh_ext_alternatives` for thin mode.
-
----
-
-## 🧹 Cleanup between iterations
+## 🧹 Cleanup Between Iterations
 
 ```bash
 ./clean-house.sh
-# Empties vendor/*, tmp/*, .cache/*, logs/* (keeps directories)
 ```
+
+Empties `vendor/*`, `tmp/*`, `.cache/*`, `logs/*` — preserves directories.
 
 ---
 
-## 🔐 Security & elevation
 
-* Password auth is supported (`--ask-pass`).
-* `sudo` is supported and controllable in **07**.
-* Environments without `sudo` (e.g., “suroot”) can be shimmed with a custom wrapper/roster — planned helper coming soon.
+## 📄 Docs
+
+* `QUICKSTART.md` – step-by-step build/run
+* `CHANGELOG.md` – notable changes per version
+
+---
+
+## 🛡️ Design Rules
+
+* EL7-safe Bash (no associative arrays, `mapfile`, here-strings, etc.)
+* Air-gap first; strict project-relative paths
+* Idempotent modules; clear ✓/⚠/✖ console with detailed logs
 
 ---
 
 ## 🧑‍💻 Maintainer & License
 
-**Maintainer:** To3Knee
-**License:** MIT (or project license of your choice)
-
----
-
-## 🧭 Troubleshooting (quick hits)
-
-* **06 shows “READY ✓” but wrappers warn** → run `env/90-install-env-wrappers.sh` again after rebuilding vendors.
-* **EL7 thin import fails in 06** → rebuild with **05** and ensure backports exist in `offline/salt/thin/el7/`.
-* **07 fails with password auth** → re-try with:
-
-  ```
-  --ssh-args "-oPreferredAuthentications=password -oPubkeyAuthentication=no"
-
----
-
-### ❤️ Thanks
-
-Huge thanks to everyone testing across EL7/8/9 and helping make this rock-solid in air-gapped environments.
+* Maintainer: **To3Knee**
+* © 2025 Salt Shaker contributors 
