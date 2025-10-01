@@ -7,7 +7,7 @@
 
 # <p align="center">🧂 Salt Shaker — Portable Salt-SSH 🧂
 
-## <p align="center"> ❌This is not 100% not functional (yet) - You have been warned❌
+## <p align="center"> ❌This is not 100% functional (yet) - You have been warned❌
 
 [![Linux](https://img.shields.io/badge/platform-Linux-blue?logo=linux&logoColor=white)](#)
 [![Bash](https://img.shields.io/badge/shell-bash-green?logo=gnu-bash&logoColor=white)](#)
