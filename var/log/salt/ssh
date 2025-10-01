@@ -1,3 +1,0 @@
-2025-10-01 17:29:56,063 [salt.client.ssh  :1527][ERROR   ][13658] Could not copy the shim script to target
-2025-10-01 17:35:10,521 [salt.client.ssh  :1527][ERROR   ][14006] Could not copy the shim script to target
-2025-10-01 17:40:50,539 [salt.client.ssh  :1527][ERROR   ][14251] Could not copy the shim script to target
