@@ -1,6 +1,7 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/To3Knee/Salt-Shaker/main/salt-shaker/assets/shlogo.jpg"
-       alt="Salt Shaker" width="200"/>
+  <img src="https://raw.githubusercontent.com/To3Knee/Salt-Shaker/main/salt-shaker/assets/shlogo.jpg" 
+       alt="Salt Shaker" 
+       width="200"/>
 </p>
 
 # 🧂 Salt Shaker — Portable Salt-SSH for Air-Gapped EL7/8/9
