@@ -1,0 +1,44 @@
+# --- Salt Shaker project ignores ---
+
+# Build/runtime artifacts (keep repo clean)
+.vendor/
+vendor/
+.cache/
+tmp/
+logs/
+
+# Dev-only helpers (not shipped to air-gapped envs)
+github/
+archive/
+
+# Salt cache/roster runtime droppings (if any end up here)
+*.retry
+*.out
+
+# Python bytecode & caches
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Editors/OS junk
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Node/Frontend (in case any helper sneaks in)
+node_modules/
+dist/
+
+# Coverage & test noise
+.coverage
+coverage/
+pytest_cache/
+
+# Shell history/backups
+*.bak
+*~
+

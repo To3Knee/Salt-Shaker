@@ -1,0 +1,40 @@
+#!/bin/bash
+# bin/salt-ssh-el8 (v1.2)
+#!/bin/bash
+#===============================================================
+#Script Name: salt-ssh-el8
+#Date: 09/28/2025
+#Created By: T03KNEE
+#Github: https://github.com/To3Knee/Salt-Shaker
+#Version: 1.2
+#Short: Wrapper for salt-ssh using EL8/EL9 onedir (with --print-env)
+#===============================================================
+set -euo pipefail
+
+RESOLVE_ABS(){ local p="$1"; if command -v readlink >/dev/null 2>&1 && readlink -f / >/dev/null 2>&1; then readlink -f -- "$p" 2>/dev/null || echo "$p"; else ( cd "$(dirname -- "$p")" >/dev/null 2>&1 && printf "%s/%s\n" "$(pwd)" "$(basename -- "$p")" ); fi; }
+SCRIPT_PATH="$(RESOLVE_ABS "$0")"; SCRIPT_DIR="$(dirname -- "$SCRIPT_PATH")"
+DETECT_ROOT(){ local d="$SCRIPT_DIR" i=6; while [ "$i" -gt 0 ]; do if [ -d "$d/vendor" ] || [ -d "$d/modules" ] || [ -f "$d/salt-shaker.sh" ] || [ -f "$d/salt-shaker-el7.sh" ]; then echo "$d"; return 0; fi; d="$(dirname -- "$d")"; i=$((i-1)); done; echo "$(pwd)"; }
+PROJECT_ROOT="${SALT_SHAKER_ROOT:-$(DETECT_ROOT)}"
+CONF_DIR="$PROJECT_ROOT/conf"; [ -d "$CONF_DIR" ] || CONF_DIR="$PROJECT_ROOT"
+
+pick_onedir(){ local base="$PROJECT_ROOT/vendor" p; for p in el8 el9 el7; do if [ -x "$base/$p/salt/salt-ssh" ] && [ -x "$base/$p/salt/bin/python3.10" ]; then echo "$base/$p/salt"; return 0; fi; done; return 1; }
+
+if [ "${1:-}" = "--print-env" ]; then
+  ONEDIR="$(pick_onedir 2>/dev/null || true)"
+  [ -n "$ONEDIR" ] && export PATH="$ONEDIR/bin:$PATH" PYTHONHOME="$ONEDIR" LD_LIBRARY_PATH="$ONEDIR/lib${LD_LIBRARY_PATH+:$LD_LIBRARY_PATH}"
+  echo "PROJECT_ROOT=$PROJECT_ROOT"
+  echo "ONEDIR=${ONEDIR:-}"
+  echo "CONF_DIR=$CONF_DIR"
+  echo "PATH=$PATH"
+  echo "PYTHONHOME=${PYTHONHOME:-}"
+  echo "LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-}"
+  if [ -n "$ONEDIR" ] && [ -x "$ONEDIR/salt-ssh" ]; then
+    echo "salt-ssh=$ONEDIR/salt-ssh"
+    "$ONEDIR/salt-ssh" --version || true
+  fi
+  exit 0
+fi
+
+ONEDIR="$(pick_onedir)" || { echo "✖ onedir not found. Run modules/04-extract-binaries.sh first." >&2; exit 2; }
+export PATH="$ONEDIR/bin:$PATH" PYTHONHOME="$ONEDIR" LD_LIBRARY_PATH="$ONEDIR/lib${LD_LIBRARY_PATH+:$LD_LIBRARY_PATH}"
+exec "$ONEDIR/salt-ssh" --config-dir "$CONF_DIR" "$@"

@@ -1,0 +1,14 @@
+# Salt-SSH Roster CSV Template
+# Edit this file to add your hosts and credentials.
+# Fields: pod,target,host,ip,port,user,passwd,sudo,ssh_args,description
+# Notes:
+# - Use commas to separate fields.
+# - Replace placeholders (e.g., <YOUR_PASSWORD>) with actual values.
+# - For Excel: Open with comma delimiter and UTF-8 encoding.
+# - For Linux: Edit with vi, nano, or any text editor.
+# - Avoid commas in field values to prevent parsing issues.
+pod,target,host,ip,port,user,passwd,sudo,ssh_args,description
+test,saltclient,salt-client.saltclient.poisonpacket.lan,192.168.1.48,22,tony,Punk69!,TRUE,-o StrictHostKeyChecking=no,EL7 Salt test VM
+
+
+# EOF - Edit this file to add your actual hosts and credentials
