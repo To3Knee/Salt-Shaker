@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/To3Knee/Salt-Shaker/main/salt-shaker/info/logo.jpg" 
+  <img src="[https://raw.githubusercontent.com/To3Knee/Salt-Shaker/main/salt-shaker/info/logo.jpg](https://github.com/To3Knee/Salt-Shaker/blob/main/info/logo.png)" 
        alt="Salt Shaker" 
        width="200"/>
 </p>
