@@ -219,5 +219,3 @@ Module **05** will list any missing ones as a one-liner (e.g., “missing: futur
 ### ❤️ Thanks
 
 Huge thanks to everyone testing across EL7/8/9 and helping make this rock-solid in air-gapped environments.
-
-```
