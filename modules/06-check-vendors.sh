@@ -1,15 +1,13 @@
 #!/bin/bash
 #===============================================================
 #Script Name: 06-check-vendors.sh
-#Date: 09/29/2025
+#Date: 10/01/2025
 #Created By: T03KNEE
-#Github: https://github.com/To3Knee/Salt-Shaker
-#Version: 5.9
+#Version: 6.0
 #Short: Check vendor onedirs (el7/el8/el9) + EL7 thin tarball
 #About: Validates vendor/el{7,8,9}/salt and vendor/el7/thin/salt-thin.tgz.
-#About: Picks controller onedir by host OS (el7→el7, el8→el8, el9→el9; fallback el8→el9→el7).
-#About: Relaxed thin validation (accepts "./salt/..." or "salt/..."). Wrapper smoke tests optional.
-#About: EL7-safe Bash; all artifacts inside PROJECT_ROOT; logs to ./logs.
+#       Picks controller onedir by host OS (el7→el7, el8→el8, el9→el9; fallback el8→el9→el7).
+#       Wrapper detection improved: robust --print-env parsing (ssh/call wrappers).
 #===============================================================
 
 set -e -o pipefail
@@ -117,7 +115,15 @@ onedir_run_version(){
 }
 onedir_pyver(){ local od="$1" py; py="$(onedir_py "$od")"; [ -z "$py" ] && { echo ""; return 1; }; "$py" -V 2>&1 || true; }
 has_salt_in_tgz(){ local tgz="$1" cnt; cnt="$(tar -tzf "$tgz" 2>/dev/null | sed 's#^\./##' | grep -E '^salt(/|$)' -c || true)"; [ -z "$cnt" ] && cnt=0; echo "$cnt"; [ "$cnt" -gt 0 ]; }
-wrapper_print_env(){ local w="$1"; if exists_exec "${BIN_DIR}/${w}"; then "${BIN_DIR}/${w}" --print-env 2>/dev/null || true; else echo ""; fi; }
+wrapper_print_env(){
+  local w="$1"
+  if exists_exec "${BIN_DIR}/${w}"; then
+    # capture both stdout and stderr; wrappers may write versions to stderr
+    "${BIN_DIR}/${w}" --print-env 2>&1 || true
+  else
+    echo ""
+  fi
+}
 
 pick_controller(){
   case "$FORCE_CTRL" in
@@ -152,7 +158,6 @@ for plat in el7 el8 el9; do
     pv="$(onedir_pyver "$od" | tr -s ' ')"
     sv_ssh="$(onedir_run_version "$od" "salt-ssh" | tr -s ' ')"
     sv_call="$(onedir_run_version "$od" "salt-call" | tr -s ' ')"
-    # Avoid % expansion/option parsing by printf: always pass literal format first
     printf -- "%-12s | %-6s | %-13s | %-24s | %-24s | %s\n" "$plat" "OK" "${pv:-?}" "${sv_ssh:-?}" "${sv_call:-?}" "$(short_path "$od")"
   else
     printf -- "%-12s | %-6s | %-13s | %-24s | %-24s | %s\n" "$plat" "MISS" "-" "-" "-" "$(short_path "$od")"
@@ -220,10 +225,15 @@ if [ "$WRAPPER_TEST" -eq 1 ]; then
   echo
   for w in salt-ssh-el7 salt-ssh-el8 salt-call-el8; do
     if [ -x "${BIN_DIR}/${w}" ]; then
-      ENVOUT="$(wrapper_print_env "$w" | sed -n '1,20p' || true)"
-      if echo "$ENVOUT" | grep -q 'ONEDIR='; then ok "Wrapper ${w} OK"; logi "Wrapper ${w} --print-env:
+      ENVOUT="$(wrapper_print_env "$w" | sed -n '1,40p' || true)"
+      if printf '%s\n' "$ENVOUT" | grep -E -q '(^ONEDIR=|^CONF_DIR=|^PROJECT_ROOT=|salt-(ssh|call)=)'; then
+        ok "Wrapper ${w} OK"
+        logi "Wrapper ${w} --print-env (truncated):
 ${ENVOUT}"
-      else warn "Wrapper ${w}: --print-env not available"; fi
+      else
+        warn "Wrapper ${w}: --print-env not available or empty"
+        logi "Wrapper ${w} --print-env (empty or missing signature)"
+      fi
     else
       warn "Wrapper ${w} not found (install via env/90-install-env-wrappers.sh)"
     fi
