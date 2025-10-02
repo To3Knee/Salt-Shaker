@@ -1,0 +1,4 @@
+﻿pod,platform,host,port,user,auth,sudo,python2_bin,ssh_args,minion_id,groups,notes
+pod-01,el7,10.0.0.7,22,root,askpass,y,/usr/bin/python,,"minion-el7-01","linux,legacy","example el7 target"
+pod-01,el8,10.0.0.8,22,root,askpass,y,,,"minion-el8-01","linux","example el8 target"
+pod-02,el9,10.0.0.9,22,root,askpass,y,,,"minion-el9-01","linux","example el9 target"
