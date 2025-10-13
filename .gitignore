@@ -1,0 +1,75 @@
+# --- Salt Shaker project ignores ---
+
+# Build/runtime artifacts (keep repo clean)
+.vendor/
+vendor/
+!vendor/thin/
+!vendor/thin/**
+.cache/
+tmp/
+logs/
+
+# Dev-only helpers (not shipped to air-gapped envs)
+github/
+archive/
+
+# Salt cache/roster runtime droppings (if any end up here)
+*.retry
+*.out
+
+# Python bytecode & caches
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Editors/OS junk
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Node/Frontend (in case any helper sneaks in)
+node_modules/
+dist/
+
+# Coverage & test noise
+.coverage
+coverage/
+pytest_cache/
+
+# Shell history/backups
+*.bak
+*~
+
+# noise/sensitive
+logs/
+tmp/
+archive/
+.cache/
+bin/*.bak
+github/.ssh/
+github/.ssh/*
+
+# Pillar secrets (local only; never push)
+pillar/data.sls
+pillar/private/**
+pillar/*.local.sls
+# SALT SHAKER: never commit runtime/secret artifacts
+etc/
+var/
+.cache/
+tmp/
+logs/
+roster/roster.yaml
+pillar/data.sls
+conf/*.bak*
+file-roots/*.bak*
+pillar/*.bak*
+# SALT SHAKER: roster CSVs (sensitive)
+roster/data/*
+!roster/data/.gitkeep
+!roster/data/README.md
+!roster/data/hosts-all-pods-example.csv

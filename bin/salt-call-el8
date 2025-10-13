@@ -1,0 +1,49 @@
+#!/bin/bash
+#===============================================================
+#Script Name: salt-call-el8
+#Date: 10/03/2025
+#Created By: T03KNEE
+#Github: https://github.com/To3Knee/Salt-Shaker
+#Version: 1.3
+#Short: Wrapper for onedir salt-call (EL8), runtime-first, --print-env
+#About: Runs bundled salt-call with runtime-first config; supports --print-env
+# to display resolved paths for diagnostics (used by check-vendors).
+#===============================================================
+
+set -euo pipefail
+LC_ALL=C
+
+SELF="${BASH_SOURCE[0]:-$0}"
+SELF_DIR="$(cd "$(dirname "$SELF")" && pwd)"
+PROJECT_ROOT="${SALT_SHAKER_ROOT:-$(cd "$SELF_DIR/.." && pwd)}"
+RUNTIME_DIR="${SALT_SHAKER_RUNTIME_DIR:-$PROJECT_ROOT/runtime}"
+
+if [ -d "$RUNTIME_DIR/conf" ]; then
+  CONF_DIR="$RUNTIME_DIR/conf"
+elif [ -d "$PROJECT_ROOT/conf" ]; then
+  CONF_DIR="$PROJECT_ROOT/conf"
+else
+  CONF_DIR="$PROJECT_ROOT/conf"
+fi
+
+SALT_CALL_BIN="$PROJECT_ROOT/vendor/el8/salt/salt-call"
+
+# Diagnostics mode
+if [ "${1:-}" = "--print-env" ]; then
+  echo "PROJECT_ROOT=$PROJECT_ROOT"
+  echo "RUNTIME_DIR=$RUNTIME_DIR"
+  echo "CONF_DIR=$CONF_DIR"
+  echo "SALT_CALL_BIN=$SALT_CALL_BIN"
+  exit 0
+fi
+
+# If caller already passed -c/--config, don't inject our -c
+want_conf=1
+for a in "$@"; do
+  case "$a" in -c|--config) want_conf=0 ;; esac
+done
+
+args=()
+[ $want_conf -eq 1 ] && args+=("-c" "$CONF_DIR")
+
+exec "$SALT_CALL_BIN" "${args[@]}" "$@"

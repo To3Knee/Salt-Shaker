@@ -1,0 +1,54 @@
+──────────────────────────────────────────────────────────────
+SALT SHAKER · Quick Help
+──────────────────────────────────────────────────────────────
+Setup (controller)
+  • Install wrappers (canonical):
+      env/install-env-wrappers.sh
+    (Installs into bin/ and runtime/bin/, 0755)
+
+Runtime-first config
+  • Generate configs (master + sample roster):
+      modules/08-generate-configs.sh
+  • Edit runtime conf/roster as needed:
+      runtime/conf/master
+      runtime/roster/roster.yaml
+
+CSV → Roster
+  • Create/lint CSV:
+      modules/02-create-csv.sh --lint
+      modules/02-create-csv.sh --autofix   # if BOM/CRLF
+  • Generate roster from CSV:
+      modules/09-generate-roster.sh
+
+Smoke tests
+  • End-to-end, guided:
+      support/smoke-all.sh
+    Optional flags:
+      --host <ip|name> --user <u> --port <n> --autofix
+      --package --vendor el7,el8|all|none --prefix /path --artifact-list --yes
+  • Deep diagnostics for one host:
+      support/diag-remote.sh <host> [--user u] [--port n]
+
+Wrappers/Vendors
+  • Verify wrappers across locations:
+      support/verify-wrappers.sh
+  • Check vendor onedir trees & thin:
+      modules/06-check-vendors.sh
+
+Support tools maintenance
+  • Rebuild index/FAQ/manifest:
+      support/support-registry.sh
+  • Disable unused/broken scripts (safe):
+      support/prune-support.sh
+    (Restores from support/.disabled/)
+
+Packaging (air-gapped)
+  • Build tarball (+RPM if available):
+      modules/10-create-project-rpm.sh
+    Interactive vendor pick or:
+      --vendor el7,el8|all|none  --prefix /sto/salt-shaker
+
+Housekeeping
+  • Clean temp/logs & normalize perms:
+      tools/clean-house.sh [--thin] [--all-logs]
+──────────────────────────────────────────────────────────────

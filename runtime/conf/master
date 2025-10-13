@@ -1,0 +1,24 @@
+# Salt-Shaker runtime master config (ssh mode)
+cachedir: /sto/salt-shaker/.cache
+log_file: /sto/salt-shaker/logs/salt-shaker.log
+log_level: info
+
+# runtime-first paths
+file_roots:
+  base:
+    - /sto/salt-shaker/runtime/file-roots
+pillar_roots:
+  base:
+    - /sto/salt-shaker/runtime/pillar
+
+# ssh opts
+transport: ssh
+ssh_log_file: /sto/salt-shaker/logs/ssh.log
+regen_thin: True
+thin_dir: /sto/salt-shaker/vendor/thin
+
+# roster defaults (runtime-only)
+roster_file: /sto/salt-shaker/runtime/roster/roster.yaml
+
+# safer ssh defaults for ad-hoc testing
+# (known_hosts suppressed; set via wrappers --ignore-host-keys)

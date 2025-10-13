@@ -1,0 +1,42 @@
+#!/bin/bash
+set -euo pipefail
+# salt-ssh-el8: runtime-first wrapper using EL8 onedir
+
+resolve_abs(){ p="$1"; if command -v readlink >/dev/null 2>&1 && readlink -f / >/dev/null 2>&1; then readlink -f -- "$p" 2>/dev/null || echo "$p"; else ( cd "$(dirname -- "$p")" >/dev/null 2>&1 && printf "%s/%s\n" "$(pwd)" "$(basename -- "$p")" ); fi; }
+detect_root(){
+  d="$(dirname -- "$(resolve_abs "$0")")"; i=6
+  while [ "$i" -gt 0 ]; do
+    [ -d "$d/vendor" ] || [ -f "$d/salt-shaker.sh" ] || [ -f "$d/salt-shaker-el7.sh" ] || [ -d "$d/modules" ] && { echo "$d"; return; }
+    d="$(dirname -- "$d")"; i=$((i-1))
+  done
+  pwd
+}
+PROJECT_ROOT="${SALT_SHAKER_ROOT:-$(detect_root)}"
+
+ONEDIR="${ONEDIR:-$PROJECT_ROOT/vendor/el8/salt}"
+SALT_SSH="$ONEDIR/salt-ssh"
+
+if [ -z "${CONF_DIR:-}" ] || [ "${CONF_DIR:-}" = "$PROJECT_ROOT/conf" ]; then
+  CONF_DIR="$PROJECT_ROOT/runtime/conf"
+fi
+if [ -z "${ROSTER_FILE:-}" ] || printf '%s' "${ROSTER_FILE:-}" | grep -q "^$PROJECT_ROOT/roster/"; then
+  ROSTER_FILE="$PROJECT_ROOT/runtime/roster/roster.yaml"
+fi
+: "${PASS_ROSTER:=yes}"
+
+if [ "${1:-}" = "--print-env" ]; then
+  echo "PROJECT_ROOT=$PROJECT_ROOT"
+  echo "ONEDIR=$ONEDIR"
+  echo "CONF_DIR=$CONF_DIR"
+  echo "ROSTER_FILE=${ROSTER_FILE:-}"
+  echo "PASS_ROSTER=$PASS_ROSTER"
+  if [ -x "$SALT_SSH" ]; then "$SALT_SSH" --version 2>/dev/null || true; fi
+  exit 0
+fi
+
+EXTRA=()
+if [ -n "${ROSTER_FILE:-}" ] && [ "${PASS_ROSTER:-}" = "yes" ]; then
+  EXTRA+=( --roster-file "$ROSTER_FILE" )
+fi
+
+exec "$SALT_SSH" -c "$CONF_DIR" "${EXTRA[@]}" "$@"
