@@ -19,7 +19,7 @@
 
 <div style="text-align: center; color: #ffffff; background-color: #ff4d4f; padding: 15px; border-radius: 5px; margin: 20px 0;">
   <span style="font-size: 1.3em;">⚠️</span> <strong>Under Active Development</strong><br>
-  Not fully functional yet—join us to make it awesome! 🎉
+  Not fully functional yet! 🎉
 </div>
 
 ---
@@ -39,7 +39,6 @@
 - [Quick Commands](#-quick-commands)
 - [FAQs](#-faqs)
 - [Recovery](#-recovery)
-- [Contributing](#-contributing)
 - [License](#-license)
 
 ---
@@ -361,15 +360,6 @@ unzip -q /sto/salt-shaker-knowngood.zip -d /sto
 chown -R root:root /sto/salt-shaker
 find /sto/salt-shaker -type f -name "*.sh" -exec chmod +x {} +
 ```
-
----
-
-## 🤝 Contributing
-
-Join us to make **Salt-Shaker** the ultimate SaltStack tool! 🎉
-- See our [Contributing Guide](CONTRIBUTING.md).
-- Report bugs or suggest features in [Issues](https://github.com/<your-username>/<your-repo>/issues).
-- Submit pull requests to enhance modules or fix issues.
 
 ---
 
