@@ -1,6 +1,6 @@
-
-<img src="info/logo.png" alt="Salt Shaker - Portable SaltStack Automation" width="150" align="center">
-
+<p align="center">
+   <img src="info/logo.png" alt="Salt Shaker - Portable SaltStack Automation" width="250" align="center">
+</p>
 
 #        🧂 Salt-Shaker 🧂
 #  Portable SaltStack Automation
