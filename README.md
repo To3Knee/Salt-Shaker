@@ -365,7 +365,8 @@ find /sto/salt-shaker -type f -name "*.sh" -exec chmod +x {} +
 
 ## 📜 License
 
-Licensed under the [MIT License](LICENSE). See the [LICENSE](LICENSE) file for details.
+Licensed under the [High Five License](LICENSE) 🙌  
+Give a high five to download, and a **super high, LOUD high five** to use **Salt-Shaker**! 🎉 See the [LICENSE](LICENSE) file for the full, fist-bumping details! 🧂
 
 <p align="center">
   <em>Built with 💖 for automation heroes tackling air-gapped challenges!</em><br>
