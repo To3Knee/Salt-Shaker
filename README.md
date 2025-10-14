@@ -7,12 +7,12 @@
 
 <p align="center">
   <a href="https://www.python.org/"><img src="https://img.shields.io/badge/Python-2.7.5%20%7C%203.10+-blue?style=flat-square" alt="Python Version"></a>
+  <a href="https://www.gnu.org/software/bash/"><img src="https://img.shields.io/badge/Bash-4.2%20%7C%205.1+-green?style=flat-square" alt="Bash Version"></a>
   <a href="https://www.saltstack.com/"><img src="https://img.shields.io/badge/SaltStack-v3006+-green?style=flat-square" alt="SaltStack"></a>
   <a href="https://github.com/To3Knee/Salt-Shaker/issues"><img src="https://img.shields.io/github/issues/To3Knee/Salt-Shaker?style=flat-square&color=orange" alt="Issues"></a>
   <a href="https://github.com/To3Knee/Salt-Shaker/graphs/contributors"><img src="https://img.shields.io/github/contributors/To3Knee/Salt-Shaker?style=flat-square&color=teal" alt="Contributors"></a>
   <img src="https://img.shields.io/badge/Platforms-RHEL%207%2F8%2F9%20%7C%20CentOS%207.9%20%7C%20Rocky%208%2F9-red?style=flat-square" alt="Platforms">
-  <a href="https://github.com/To3Knee/Salt-Shaker/releases"><img src="https://img.shields.io/github/downloads/To3Knee/Salt-Shaker/total?style=flat-square&color=purple" alt="Downloads"></a>
-</p>
+  </p>
 
 <p align="center">
   <strong>🚀 Streamlined, offline SaltStack toolchains for RHEL/CentOS 7.9 and Rocky/RHEL 8/9</strong>
