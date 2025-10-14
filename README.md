@@ -1,8 +1,8 @@
 
 
 
-# 🧂 Salt-Shaker 🧂
-#  Offline Salt SSH Builder & Remote Runner
+#                 🧂 Salt-Shaker 🧂
+#  Portable SaltStack Automation for Air-Gapped Environments 
 > **Target:** RHEL/CentOS **7.9** (Python 2.7.5) + Rocky/RHEL **8/9** controllers
 > **Goal:** Build a portable, offline Salt SSH toolchain with curated “thin” packages, generate rosters from CSV (by **pod**), stage deployables (RPM/tar), and operate cleanly across isolated networks.
 
