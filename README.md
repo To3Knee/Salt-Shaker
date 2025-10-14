@@ -1,15 +1,18 @@
 <p align="center">
-   <img src="info/logo.png" alt="Salt Shaker - Portable SaltStack Automation" width="250" align="center">
+  <img src="info/logo.png" alt="Salt Shaker - Portable SaltStack Automation" width="250">
 </p>
 
 <div style="text-align: center;">
   <h1>🧂 Salt-Shaker 🧂</h1>
   <h2>Portable SaltStack Automation</h2>
 </div>
-> **Target:** RHEL/CentOS **7.9** (Python 2.7.5) + Rocky/RHEL **8/9** controllers
-> **Goal:** Build a portable, offline Salt SSH toolchain with curated “thin” packages, generate rosters from CSV (by **pod**), stage deployables (RPM/tar), and operate cleanly across isolated networks.
 
-<div style="text-align: center; color: red;">
+<p align="center">
+  <strong>Target:</strong> RHEL/CentOS <strong>7.9</strong> (Python 2.7.5) + Rocky/RHEL <strong>8/9</strong> controllers<br>
+  <strong>Goal:</strong> Build a portable, offline Salt SSH toolchain with curated “thin” packages, generate rosters from CSV (by <strong>pod</strong>), stage deployables (RPM/tar), and operate cleanly across isolated networks.
+</p>
+
+<div style="text-align: center; color: red; margin-top: 20px;">
   <span style="font-size: 1.2em;">❌</span> This project is not 100% functional... yet
 </div>
 
