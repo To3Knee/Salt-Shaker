@@ -1,16 +1,43 @@
 <p align="center">
-  <img src="info/logo.png" alt="Salt Shaker - Portable SaltStack Automation" width="250">
+  <img src="info/logo.png" alt="Salt Shaker - Portable SaltStack Automation" width="200">
 </p>
 
-#        🧂 Salt-Shaker 🧂
-#  Portable SaltStack Automation
-> **Target:** RHEL/CentOS **7.9** (Python 2.7.5) + Rocky/RHEL **8/9** controllers
-> **Goal:** Build a portable, offline Salt SSH toolchain with curated “thin” packages, generate rosters from CSV (by **pod**), stage deployables (RPM/tar), and operate cleanly across isolated
+<h1 align="center">🧂 Salt-Shaker 🧂</h1>
+<h3 align="center">Portable SaltStack Automation for Seamless Deployments</h3>
 
-## 🚧 In Development
+<p align="center">
+  <a href="https://github.com/<your-username>/<your-repo>/actions"><img src="https://img.shields.io/github/workflow/status/<your-username>/<your-repo>/CI?label=Build&style=flat-square" alt="Build Status"></a>
+  <a href="https://www.python.org/"><img src="https://img.shields.io/badge/Python-2.7%20|%203.x-blue?style=flat-square" alt="Python Version"></a>
+  <a href="https://www.saltstack.com/"><img src="https://img.shields.io/badge/SaltStack-v3006+-green?style=flat-square" alt="SaltStack"></a>
+  <a href="https://github.com/<your-username>/<your-repo>/license"><img src="https://img.shields.io/github/license/<your-username>/<your-repo>?style=flat-square" alt="License"></a>
+</p>
 
-<div style="text-align: center; color: red; margin-top: 20px;">
-  <span style="font-size: 1.2em;">❌</span> This project is not 100% functional... yet ❌
+<p align="center">
+  <strong>🚀 Build portable, offline Salt SSH toolchains with curated packages for isolated networks</strong>
+</p>
+
+---
+
+## 🎯 Project Overview
+
+**Salt-Shaker** is a lightweight, portable automation toolchain built on **SaltStack**. It’s designed to simplify deployments across **RHEL/CentOS 7.9** (Python 2.7.5) and **Rocky/RHEL 8/9** controllers, even in air-gapped environments.
+
+### 🔑 Goals
+- 🗂️ Generate rosters from **CSV** files (organized by **pod**).
+- 📦 Stage deployables (RPM/tar) for seamless distribution.
+- 🌐 Operate cleanly across **isolated networks** with curated “thin” packages.
+
+### 🛠️ Target Environments
+- **RHEL/CentOS 7.9** (Python 2.7.5)
+- **Rocky/RHEL 8 & 9** controllers
+
+---
+
+## 🚧 Work in Progress
+
+<div style="text-align: center; color: #ff4d4f; font-size: 1.1em; margin: 20px 0;">
+  <strong>⚠️ This project is under active development and not yet fully functional.</strong><br>
+  Stay tuned for updates! 🚀
 </div>
 
 ---
