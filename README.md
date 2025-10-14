@@ -17,11 +17,10 @@
   <strong>🚀 Streamlined, offline SaltStack toolchains for RHEL/CentOS 7.9 and Rocky/RHEL 8/9</strong>
 </p>
 
-<p align="center">
 <div style="text-align: center; color: #ffffff; background-color: #ff4d4f; padding: 15px; border-radius: 5px; margin: 20px 0;">
   <span style="font-size: 1.3em;">⚠️</span> <strong>Under Active Development</strong>⚠️<br>
 </div>
-</p>
+
 ---
 
 ## 📜 Table of Contents
