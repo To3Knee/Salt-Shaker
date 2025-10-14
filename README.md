@@ -1,5 +1,5 @@
 
-![Salt Shaker - Portable SaltStack Automation](info/logo.png)
+<img src="info/logo.png" alt="Salt Shaker - Portable SaltStack Automation" width="50">
 
 
 #        🧂 Salt-Shaker 🧂
