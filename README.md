@@ -80,22 +80,35 @@ Wrappers detect OS major and launch the correct onedir from `vendor/el*/salt` �
 Typical main menu (sample):
 
 ```
-════════════════════════════════════════════════════════════════════
-▶ Salt-Shaker Main Menu
-Project Root: /path/to/salt-shaker
-════════════════════════════════════════════════════════════════════
-  1) Setup / Verify Environment
-  2) Verify Vendor & Thin
-  3) Extract Binaries (offline → vendor/…)
-  4) Build Thin (EL7)
-  5) Generate Configs
-  6) Generate Roster
-  7) Remote Test (salt-ssh sanity)
-  8) Create Project RPM
-  9) Stage Deployables
-  H) Help / Docs
-  Q) Quit
-Select:
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                     S A L T • S H A K E R v1.11                              ║
+║ Portable SaltStack Automation for Air-Gapped Environments                    ║
+╠══════════════════════════════════════════════════════════════════════════════╣
+║ Project: /sto/salt-shaker │ OS: Rocky Linux release 8.10 │ Modules: 12       ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+┌─ Salt Shaker Menu ──────────────────────────────────────────────────────┐
+│
+│ 1. setup                - Initialize project layout
+│ 2. check-dirs           - Validate project directories
+│ 3. create-csv           - Generate package CSV
+│ 4. verify-packages      - Verify offline packages
+│ 5. extract-binaries     - Extract controller binaries
+│ 6. build-thin-el7       - Build salt-thin for EL7
+│ 7. check-vendors        - Check vendors & thin
+│ 8. remote-test          - Remote test via salt-ssh
+│ 9. generate-configs     - Generate salt configs
+│ 10. generate-roster      - Generate roster
+│ 11. create-project-rpm   - Package project RPM
+│ 12. stage-deployables    - Stage-deployables module
+│
+└─ Options: [Q]uit  [N]ext  [P]rev  [R]efresh  [H]elp
+   Page 0/1  (12 modules loaded)
+
+Select option (number/Q/N/P/R/H): 
+
+
+
 ```
 
 All modules print short, high-signal lines with ✓ and ✗ — no noisy scrollback.
