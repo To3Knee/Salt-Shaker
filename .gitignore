@@ -73,3 +73,6 @@ roster/data/*
 !roster/data/.gitkeep
 !roster/data/README.md
 !roster/data/hosts-all-pods-example.csv
+!vendor/el7/
+!vendor/el7/thin/
+!vendor/el7/thin/**
