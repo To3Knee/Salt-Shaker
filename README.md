@@ -6,12 +6,10 @@
 <h3 align="center">Portable SaltStack Automation for Air-Gapped Deployments</h3>
 
 <p align="center">
-  <a href="https://github.com/To3Knee/Salt-Shaker/actions"><img src="https://img.shields.io/github/actions/workflow/status/To3Knee/Salt-Shaker/ci.yml?label=Build&style=flat-square" alt="Build Status"></a>
   <a href="https://www.python.org/"><img src="https://img.shields.io/badge/Python-2.7.5%20%7C%203.10+-blue?style=flat-square" alt="Python Version"></a>
   <a href="https://www.saltstack.com/"><img src="https://img.shields.io/badge/SaltStack-v3006+-green?style=flat-square" alt="SaltStack"></a>
   <a href="https://github.com/To3Knee/Salt-Shaker/issues"><img src="https://img.shields.io/github/issues/To3Knee/Salt-Shaker?style=flat-square&color=orange" alt="Issues"></a>
   <a href="https://github.com/To3Knee/Salt-Shaker/graphs/contributors"><img src="https://img.shields.io/github/contributors/To3Knee/Salt-Shaker?style=flat-square&color=teal" alt="Contributors"></a>
-  <a href="https://github.com/To3Knee/Salt-Shaker/blob/main/LICENSE"><img src="https://img.shields.io/github/license/To3Knee/Salt-Shaker?style=flat-square" alt="License"></a>
   <img src="https://img.shields.io/badge/Platforms-RHEL%207%2F8%2F9%20%7C%20CentOS%207.9%20%7C%20Rocky%208%2F9-red?style=flat-square" alt="Platforms">
   <a href="https://github.com/To3Knee/Salt-Shaker/stargazers"><img src="https://img.shields.io/github/stars/To3Knee/Salt-Shaker?style=social" alt="GitHub Stars"></a>
 </p>
