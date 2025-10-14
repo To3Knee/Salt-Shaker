@@ -309,9 +309,3 @@ find /sto/salt-shaker -type f -name "*.sh" -exec chmod +x {} +
 * **No external installs**
 * Safety via snapshots, confirmations, and clear output
 * Designed to be **reproducible** across EL7/EL8/EL9 with legacy needs
-
-EOF
-
-```
-::contentReference[oaicite:0]{index=0}
-```
