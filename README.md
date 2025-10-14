@@ -1,10 +1,9 @@
 
 ![Salt Shaker - Portable SaltStack Automation](info/logo.png)
 
-<p align="center">
+
 #        🧂 Salt-Shaker 🧂
 #  Portable SaltStack Automation
-</p>
 > **Target:** RHEL/CentOS **7.9** (Python 2.7.5) + Rocky/RHEL **8/9** controllers
 > **Goal:** Build a portable, offline Salt SSH toolchain with curated “thin” packages, generate rosters from CSV (by **pod**), stage deployables (RPM/tar), and operate cleanly across isolated networks.
 
