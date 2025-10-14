@@ -119,7 +119,7 @@ Typical main menu (EL7):
 ║                         S A L T • S H A K E R v8.10                          ║
 ╠══════════════════════════════════════════════════════════════════════════════╣
 ║          Portable SaltStack Automation for Air-Gapped Environments           ║
-║                 Red Hat Enterprise Linux Server 7.9 • Maipo                  ║
+║                 Red Hat Enterprise Linux Server 7.9 •                        ║
 ╠══════════════════════════════════════════════════════════════════════════════╣
 ║   1)       init dirs                                                         ║
 ║   2)       create csv                                                        ║
