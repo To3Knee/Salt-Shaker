@@ -18,8 +18,7 @@
 </p>
 
 <div style="text-align: center; color: #ffffff; background-color: #ff4d4f; padding: 15px; border-radius: 5px; margin: 20px 0;">
-  <span style="font-size: 1.3em;">⚠️</span> <strong>Under Active Development</strong> ⚠️<br>
-  Not fully functional yet! 🎉
+  <span style="font-size: 1.3em;">⚠️</span> <strong>Under Active Development</strong>⚠️ Not fully functional yet!<br>
 </div>
 
 ---
