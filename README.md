@@ -1,6 +1,6 @@
 
 <p align="center">
-  <img src="http://some_place.com/image.png" />
+  <img src="[http://some_place.com/image.png](https://github.com/To3Knee/Salt-Shaker/blob/main/info/logo.png)" />
 </p>
 
 #        🧂 Salt-Shaker 🧂
