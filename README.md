@@ -12,8 +12,10 @@
   <strong>Goal:</strong> Build a portable, offline Salt SSH toolchain with curated “thin” packages, generate rosters from CSV (by <strong>pod</strong>), stage deployables (RPM/tar), and operate cleanly across isolated networks.
 </p>
 
+## ❌ In Development
+
 <div style="text-align: center; color: red; margin-top: 20px;">
-  <span style="font-size: 1.2em;">❌</span> This project is not 100% functional... yet
+  <span style="font-size: 1.2em;">❌</span> This project is not 100% functional... yet ❌
 </div>
 
 ---
