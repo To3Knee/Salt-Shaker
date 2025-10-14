@@ -1,7 +1,6 @@
 
-<p align="center">
 ![Salt Shaker - Portable SaltStack Automation](info/logo.png)
-</p>
+
 <p align="center">
 #        🧂 Salt-Shaker 🧂
 #  Portable SaltStack Automation
