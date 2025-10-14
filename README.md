@@ -7,10 +7,8 @@
   <h2>Portable SaltStack Automation</h2>
 </div>
 
-<p align="center">
-  <strong>Target:</strong> RHEL/CentOS <strong>7.9</strong> (Python 2.7.5) + Rocky/RHEL <strong>8/9</strong> controllers<br>
-  <strong>Goal:</strong> Build a portable, offline Salt SSH toolchain with curated “thin” packages, generate rosters from CSV (by <strong>pod</strong>), stage deployables (RPM/tar), and operate cleanly across isolated networks.
-</p>
+> **Target:** RHEL/CentOS **7.9** (Python 2.7.5) + Rocky/RHEL **8/9** controllers
+> **Goal:** Build a portable, offline Salt SSH toolchain with curated “thin” packages, generate rosters from CSV (by **pod**), stage deployables (RPM/tar), and operate cleanly across isolated
 
 ## 🚧 In Development
 
