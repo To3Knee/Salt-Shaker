@@ -1,8 +1,10 @@
 
+<p align="center">
+  <img src="http://some_place.com/image.png" />
+</p>
 
-
-#                 🧂 Salt-Shaker 🧂
-#  Portable SaltStack Automation for Air-Gapped Environments 
+#        🧂 Salt-Shaker 🧂
+#  Portable SaltStack Automation
 > **Target:** RHEL/CentOS **7.9** (Python 2.7.5) + Rocky/RHEL **8/9** controllers
 > **Goal:** Build a portable, offline Salt SSH toolchain with curated “thin” packages, generate rosters from CSV (by **pod**), stage deployables (RPM/tar), and operate cleanly across isolated networks.
 
@@ -77,7 +79,7 @@ Wrappers detect OS major and launch the correct onedir from `vendor/el*/salt` �
 ./salt-shaker-el7.sh
 ````
 
-Typical main menu (sample):
+Typical main menu (EL8x / EL9x):
 
 ```
 ╔══════════════════════════════════════════════════════════════════════════════╗
@@ -108,6 +110,29 @@ Typical main menu (sample):
 Select option (number/Q/N/P/R/H): 
 
 
+```
+
+Typical main menu (EL7):
+
+```
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                         S A L T • S H A K E R v8.10                          ║
+╠══════════════════════════════════════════════════════════════════════════════╣
+║          Portable SaltStack Automation for Air-Gapped Environments           ║
+║                 Red Hat Enterprise Linux Server 7.9 • Maipo                  ║
+╠══════════════════════════════════════════════════════════════════════════════╣
+║   1)       init dirs                                                         ║
+║   2)       create csv                                                        ║
+║   3)       verify packages                                                   ║
+║   4)       extract binaries                                                  ║
+║   5)       build thin el7                                                    ║
+║   6)       check vendors                                                     ║
+║   7)       remote test                                                       ║
+║   8)       generate configs                                                  ║
+╠══════════════════════════════════════════════════════════════════════════════╣
+║  [1-8] Select • [N] Next • [P] Prev • [R] Refresh • [H] Help • [Q] Quit      ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+Select [1-8 / N / P / R / H / Q]:
 
 ```
 
