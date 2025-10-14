@@ -369,5 +369,5 @@ Licensed under the [MIT License](LICENSE). See the [LICENSE](LICENSE) file for d
 
 <p align="center">
   <em>Built with 💖 for automation heroes tackling air-gapped challenges!</em><br>
-  <a href="https://github.com/<your-username>/<your-repo>/stargazers"><img src="https://img.shields.io/github/stars/<your-username>/<your-repo>?style=social" alt="GitHub Stars"></a>
+  <a href="https://github.com/To3Knee/Salt-Shaker/stargazers"><img src="https://img.shields.io/github/stars/To3Knee/Salt-Shaker?style=social" alt="GitHub Stars"></a>
 </p>
