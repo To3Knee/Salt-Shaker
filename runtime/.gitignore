@@ -1,0 +1,77 @@
+# --- Salt Shaker project ignores (root) ---
+
+# Dev-only helpers (never ship to air-gapped envs)
+github/
+archive/
+
+# Project-root noise
+tmp/
+.cache/
+logs/              # drop ALL project-root logs (support/ is tracked)
+bin/*.bak
+
+# Dependencies / build
+node_modules/
+dist/
+
+# Editors/OS junk
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Python bytecode & caches
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Coverage & test noise
+.coverage
+coverage/
+pytest_cache/
+
+# Shell history/backups & misc
+*.bak
+*~
+
+# ---------------------------
+# Vendor policy:
+# ignore everything in vendor/, but keep thin/**
+# ---------------------------
+vendor/*
+!vendor/thin/
+!vendor/thin/**
+
+# ---------------------------
+# RUNTIME-SCOPED secret protections
+# (scoped to runtime/ to avoid overmatching system paths)
+# ---------------------------
+
+# never commit runtime secrets/artifacts
+runtime/etc/*
+runtime/var/*
+runtime/.cache/*
+runtime/tmp/*
+runtime/logs/*
+
+# Salt runtime cache/roster droppings
+*.retry
+*.out
+
+# Pillar secrets (local only; never push)
+runtime/pillar/data.sls
+runtime/pillar/private/**
+runtime/pillar/*.local.sls
+runtime/pillar/*.bak*
+conf/*.bak*
+file-roots/*.bak*
+
+# Roster YAML & CSVs (sensitive target lists)
+runtime/roster/roster.yaml
+roster/data/*
+!roster/data/.gitkeep
+!roster/data/README.md
+!roster/data/*example*.csv

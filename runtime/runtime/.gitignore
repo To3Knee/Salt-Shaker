@@ -1,0 +1,17 @@
+etc/*
+logs/*
+var/*
+.cache/*
+tmp/*
+
+pillar/*
+!pillar/.gitignore
+!pillar/README.md
+!pillar/*.example*
+!pillar/**/.gitkeep
+
+roster/*
+!roster/.gitignore
+!roster/README.md
+!roster/*example*.csv
+!roster/**/.gitkeep
