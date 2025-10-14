@@ -3,6 +3,8 @@
   <img src="[http://some_place.com/image.png](https://github.com/To3Knee/Salt-Shaker/blob/main/info/logo.png)" />
 </p>
 
+![Salt Shaker - Portable SaltStack Automation](info/logo.png)
+
 #        🧂 Salt-Shaker 🧂
 #  Portable SaltStack Automation
 > **Target:** RHEL/CentOS **7.9** (Python 2.7.5) + Rocky/RHEL **8/9** controllers
