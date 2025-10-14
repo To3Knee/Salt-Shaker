@@ -76,3 +76,8 @@ roster/data/*
 !vendor/el7/
 !vendor/el7/thin/
 !vendor/el7/thin/**
+!vendor/el7/
+!vendor/el7/thin/
+!vendor/el7/thin/**
+!vendor/el8/
+!vendor/el9/
